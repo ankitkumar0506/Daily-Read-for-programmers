@@ -1,68 +1,116 @@
 <?php
-// 2026-08-12 13:39:53
+// 2026-08-13 03:39:45
 /*
-**Topic: Using Laravel Eloquent Relationships in a Real World Example**
+**Topic Name:** Implementing Relationships in Laravel Eloquent
 
-Laravel Eloquent relationships allow you to easily interact with related models in your database. This topic will explore how to use Eloquent relationships to create a simple blog where each post has many comments, and each comment belongs to one post.
+**Explanation:** In Laravel, Eloquent provides an elegant way to interact with your database using objects. One of the essential features of Eloquent is its ability to implement relationships between models. This topic will cover how to create one-to-one, one-to-many, and many-to-many relationships in Laravel.
 
 **Code Example:**
 
+Let's say we have three tables: `users`, `orders`, and `order_items`. We want to establish relationships between these tables.
+
+First, let's define our models:
 ```php
-// Post Model
-class Post extends Model
-{
-    protected $fillable = ['title', 'content'];
+// app/Models/User.php
 
-    public function comments()
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+
+class User extends Model
+{
+    use HasFactory;
+
+    public function orders()
     {
-        return $this->hasMany(Comment::class);
+        return $this->hasMany(Order::class);
     }
 }
 
-// Comment Model
-class Comment extends Model
-{
-    protected $fillable = ['name', 'body', 'post_id'];
+// app/Models/Order.php
 
-    public function post()
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+
+class Order extends Model
+{
+    use HasFactory;
+
+    public function items()
     {
-        return $this->belongsTo(Post::class);
+        return $this->hasMany(OrderItem::class);
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
     }
 }
 
-// Creating a new post
-$post = new Post();
-$post->title = 'Example Post';
-$post->content = 'This is an example post';
-$post->save();
+// app/Models/OrderItem.php
 
-// Adding comments to the post
-$comment1 = new Comment();
-$comment1->name = 'John';
-$comment1->body = 'Great post!';
-$comment1->post_id = $post->id;
-$comment1->save();
+namespace App\Models;
 
-$comment2 = new Comment();
-$comment2->name = 'Jane';
-$comment2->body = 'Love the article!';
-$comment2->post_id = $post->id;
-$comment2->save();
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
-// Retrieving comments for the post
-$comments = $post->comments;
+class OrderItem extends Model
+{
+    use HasFactory;
 
-foreach ($comments as $comment) {
-    echo $comment->name . ': ' . $comment->body . ' (ID: ' . $comment->id . ')' . PHP_EOL;
-}
+    protected $fillable = ['order_id', 'product_id'];
 
-// Retrieving the post with its comments
-$postWithComments = Post::with('comments')->find($post->id);
+    public function order()
+    {
+        return $this->belongsTo(Order::class);
+    }
 
-foreach ($postWithComments->comments as $comment) {
-    echo $comment->name . ': ' . $comment->body . ' (ID: ' . $comment->id . ')' . PHP_EOL;
+    public function product()
+    {
+        // assuming a Products table exists
+        // and we have a relationship defined
+        return $this->belongsTo(Product::class);
+    }
 }
 ```
 
-In this example, we're creating two models, Post and Comment, each with the necessary relationships defined using Eloquent's hasMany and belongsTo methods. We then create a new post and add two comments to it, and finally retrieve the comments for the post and the post with its comments using Eloquent's with method.
+Next, let's create a relationship in the controller:
+```php
+// app/Http/Controllers/OrderController.php
+
+namespace App\Http\Controllers;
+
+use App\Models\Order;
+use App\Models\User;
+
+class OrderController extends Controller
+{
+    public function show(Order $order, User $user)
+    {
+        $user->load('orders'); // load all orders for the user
+        $order->load('items'); // load all items for the order
+
+        return view('orders.show', [
+            'order' => $order,
+            'user' => $user,
+        ]);
+    }
+}
+```
+
+Finally, in our view, we can access the relationships like this:
+```php
+// resources/views/orders/show.blade.php
+
+{!! $user->orders->each(function($order) {
+    echo $order->items->each(function($item) {
+        echo $item->product->name;
+    });
+}) !!}
+```
+
+In this example, we've established one-to-many relationships (`orders` on the `User` model, `items` on the `Order` model) and a many-to-many relationship (through the `order_items` table). We've also demonstrated how to load relationships using Eloquent.
 */
