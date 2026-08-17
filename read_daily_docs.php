@@ -1,188 +1,194 @@
 <?php
-// 2026-08-16 02:42:17
+// 2026-08-17 02:42:17
 
 /* PHP
-**Object-Oriented Programming (OOP) with PHP Classes and Inheritance**
+**Closures in PHP**
 
-Object-Oriented Programming allows developers to create reusable and modular code that can be easily maintained and modified. In PHP, classes and inheritance are key components of OOP. A class is a blueprint for creating objects, and inheritance allows for the reuse of code by one class being derived from another.
-
-Here's a basic example of a PHP class that demonstrates inheritance:
+Closures in PHP are anonymous functions that have access to their own scope and can capture variables from the outer scope. They are defined at runtime and can be used as callback functions in various PHP functions. Closures are useful when you need a function that can capture state from the surrounding scope or modify the surrounding scope. Closures can have their own variables, which are stored in the closure itself, and not in the surrounding scope. This makes closures useful for creating higher order functions.
 
 ```php
-// Animal.php (base class)
-class Animal {
-    function sound() {
-        echo "The animal makes a sound.";
-    }
-}
+// Example of a closure
+$closure = function($name) {
+    // Capture a variable from the outer scope
+    $greeting = "Hello, $name!";
 
-// Dog.php (derived class, inherits from Animal)
-class Dog extends Animal {
-    function sound() {
-        // overrides the parent's sound method
-        echo "The dog barks.";
-    }
+    // Return another function that uses the captured variable
+    return function() use ($greeting) {
+        // Use the captured variable
+        echo $greeting . "\n";
+    };
+};
 
-    function wagTail() {
-        echo "The dog wags its tail.";
-    }
-}
+// Create a new function using the closure
+$helloJohn = $closure("John");
+// Output: Hello, John!
+$helloJane = $closure("Jane");
+// Output: Hello, Jane!
 
-// example usage
-$d = new Dog();
-$d->sound(); // outputs: The dog barks.
-$d->wagTail(); // outputs: The dog wags its tail.
+// Use the inner function
+$helloJohn(); // Output: Hello, John!
+$helloJane(); // Output: Hello, Jane!
 ```
-
-In this example, the `Animal` class is the base class, and the `Dog` class is a derived class that inherits from `Animal`. The `Dog` class overrides the `sound()` method from `Animal` and adds a new `wagTail()` method. The example usage code creates a new `Dog` object and calls the `sound()` and `wagTail()` methods on it.
 */
 
 /* Laravel
-**Caching in Laravel**
+**Laravel Model Observers**
 
-Caching is a technique used to store frequently accessed data in memory or on disk, allowing it to be retrieved more quickly than if it were retrieved from a database or other storage system. Laravel provides a simple and flexible approach to caching through its cache facade.
-
-Caching can significantly improve the performance of a website or application by reducing the load on the database and other resources. However, it is essential to use caching responsibly and ensure that the cached data is up-to-date and accurate.
-
-Here is an example of how to use caching in Laravel:
+Model observers in Laravel provide a way to hook into various events that occur during the lifecycle of an Eloquent model. These events include creation, updates, and deletion of models. This feature allows for decoupling of business logic from models and controllers. Observers can be used to perform tasks such as sending notifications when a model is updated, or performing some complex validation when data is inserted. This approach promotes separation of concerns and makes the code more modular. 
 
 ```php
-// Get a cache instance using the cache facade
-(cache)->store($value, 'my-cache-key', 60);
+// app/Observers/UserObserver.php
 
-// Retrieve the cached value
-$value = (cache)->get('my-cache-key');
+namespace App\Observers;
 
-// Check if a value is cached
-(value =) (cache)->has('my-cache-key');
+use App\Models\User;
 
-// Delete a cached value
-(cache)->forget('my-cache-key'));
+class UserObserver
+{
+
+    public function created(User $user)
+    {
+        // Send a notification when a new user is created
+        \Notification::send($user, new NewUserNotification());
+    }
+
+    public function updated(User $user)
+    {
+        // Perform some complex validation when a user is updated
+        // For example, check if the updated email address is already taken
+        $takenEmail = User::where('email', $user->email)->count();
+        if ($takenEmail > 0) {
+            throw new ValidationException(['email' => 'Email is already taken.']);
+        }
+    }
+}
 ```
 
-Note: The code examples above will only work if you have created a cache configuration file named "cache.php" in the "config" directory of your project. The "cache.php" file will typically include configuration settings like cache store type, lifetime, and tags. 
+To use this observer, you need to register it in the User model and also in the service provider.
 
-Additionally, the (cache)->store() method accepts several parameters. You can use them as follows:
+```php
+// app/Models/User.php
 
-- `$value`: The value you want to store in the cache. It can be a string, a number, or an array.
-- `$key`: The cache key you want to use. If you omit this value, a default cache key will be generated automatically.
-- `$minutes`: The lifespan of the cached value in minutes. If you omit this value, the cached value will expire after one hour.
+namespace App\Models;
 
-Remember that the cache is not persisted when the Laravel application is not running. If you need your cache to survive even when your application is down, you need to use a more advanced caching mechanism like Redis or Memcached.
+use Illuminate\Database\Eloquent\Model;
+use App\Observers\UserObserver;
+
+class User extends Model
+{
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::created(function ($user) {
+            UserObserver::created($user);
+        });
+
+        static::updated(function ($user) {
+            UserObserver::updated($user);
+        });
+    }
+}
+```
 */
 
 /* MySQL
-**Trigger in MySQL**
+**Transaction Management in MySQL**
 
-A trigger in MySQL is a stored procedure that automatically executes in response to certain events occurring in a database. It can perform actions, such as data modifications, before or after an event, and allows to maintain data consistency and constraints. Triggers can be used for auditing, data validation, and error handling. They are typically used on tables, but can also be used on views and events. Triggers can be either BEFORE or AFTER an event.
+Transaction management in MySQL allows for atomicity, consistency, isolation, and durability of database operations. It ensures that a series of database operations are executed as a single, indivisible unit. This means that either all operations within the transaction are completed successfully, or none are, maintaining the integrity of the database. Transactions are especially useful in multi-user environments where multiple users are accessing and modifying the same data. When a transaction is rolled back, the database is restored to its previous state before the transaction began.
 
 ```sql
--- Create a table
-CREATE TABLE employees (
-  id INT PRIMARY KEY AUTO_INCREMENT,
-  name VARCHAR(255),
-  salary DECIMAL(10, 2),
-  last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+-- Start a new transaction
+START TRANSACTION;
 
--- Create a trigger on the employees table
-CREATE TRIGGER update_log
-AFTER UPDATE ON employees
-FOR EACH ROW
-BEGIN
-  INSERT INTO update_log (id, name, old_salary, new_salary, modified_at)
-  VALUES (OLD.id, OLD.name, OLD.salary, NEW.salary, NOW());
-END;
+-- Execute a series of operations as part of the transaction
+INSERT INTO customers (name, email) VALUES ('John Doe', 'johndoe@example.com');
+INSERT INTO orders (customer_id, order_date) VALUES (LAST_INSERT_ID(), '2024-03-12');
 
--- Update the salary of an employee
-UPDATE employees SET salary = 50000 WHERE id = 1;
+-- If either operation fails, the entire transaction will be rolled back
+-- If both operations are successful, the transaction is committed to the database
+-- This ensures that the customer and order are related correctly
 
--- Display the update log
-SELECT * FROM update_log;
+-- Commit the transaction to the database
+COMMIT;
+
+-- If you want to undo all operations within the transaction, use the ROLLBACK statement
+-- This will restore the database to its previous state before the transaction began
+-- ROLLBACK;
 ```
 */
 
 /* JavaScript
-JavaScript Generators and Iterators
+Topic: Closures
 
-JavaScript generators and iterators are powerful tools for managing asynchronous operations and dealing with large datasets by dividing them into smaller chunks. Generators are functions that return a special type of iterator, and iterators are used to control the iteration process over a set of data.
-
-Generators allow for the suspension and resumption of function execution, enabling lazy evaluation and memory efficiency. They are commonly used in asynchronous programming, like handling large amounts of data streaming from a server, to avoid processing and consuming all data at once.
-
-Here's a code example:
+Closures are a fundamental concept in JavaScript that enable you to access variables from a different scope in a functional context. They allow you to create functions that have access to their outer scope even when the outer function has finished executing. Closures are often used to implement private variables and functions in objects. They are also useful for creating reusable code and for managing the scope of variables.
 
 ```javascript
-// Define a generator function
-function* createNumbers() {
-    let i = 1;
-    while (i <= 5) {
-        yield i; // return (but don't exit) the current value
-        i++; // this line is executed when next() is called again
+// define an outer function
+function outer() {
+    // define a variable and a function in the outer scope
+    var name = 'John Doe';
+    function inner() {
+        // inner function can access the variable from the outer scope
+        console.log('Hello, my name is ' + name);
     }
+    
+    // return the inner function
+    return inner;
 }
 
-// Create a generator iterator
-const gen = createNumbers();
+// create a closure by calling the outer function
+var greet = outer();
 
-// Iterate over the generated values
-while (true) {
-    const result = gen.next();
-    if (result.done) {
-        break; // no more values to yield
-    }
-    console.log(result.value);
-}
+// call the inner function through the closure
+greet(); // outputs "Hello, my name is John Doe"
 ```
-
-In this example, the generator function `createNumbers` returns an iterator that yields values from 1 to 5. When the `while` loop calls `gen.next()`, it executes the current iteration (yields a new value), and the `next` method returns an object with the `value` property set to the yielded value, or `done` set to `true` when there are no more values to yield. This pattern can be utilized for various programming tasks, like asynchronous data processing or tree traversal, by implementing the iteration logic directly within the generator function.
 */
 
 /* AI
-**Gradient Descent Optimization in Machine Learning**
+**Topic: Building a Basic Neural Network using Keras and TensorFlow**
 
-Gradient Descent is a fundamental optimization technique used in machine learning to minimize the loss function of a model by iteratively updating the model parameters. It is an iterative process where the model parameters are updated at each iteration based on the gradient of the loss function. The goal is to find the optimal parameters that minimize the loss function and maximize the model's performance. The algorithm starts with an initial set of parameters and iteratively updates them until convergence. The update rule for each parameter is proportional to the negative gradient of the loss function with respect to that parameter.
+A neural network is composed of interconnected nodes or 'neurons' that process and transmit information. In this topic, we will build a simple neural network using Keras and TensorFlow to classify handwritten digits. We will use the MNIST dataset, which consists of 60,000 training images and 10,000 testing images of handwritten digits from 0 to 9.
 
-Here's an example of Gradient Descent implemented in Python:
+Here's a basic example of how to build a neural network using Keras and TensorFlow:
 
 ```python
+# Import required libraries
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
 import numpy as np
 
-# Define the learning rate and number of iterations
-alpha = 0.01
-iterations = 1000
+# Load MNIST dataset
+(X_train, y_train), (X_test, y_test) = keras.datasets.mnist.load_data()
 
-# Initialize the model parameters
-w = np.random.rand(1)
-b = np.random.rand(1)
+# Reshape data
+X_train = X_train.reshape(-1, 784)
+X_test = X_test.reshape(-1, 784)
 
-# Define the loss function
-def loss(y_pred, y_true):
-    return np.mean((y_pred - y_true) ** 2)
+# Normalize data
+X_train = X_train / 255.0
+X_test = X_test / 255.0
 
-# Define the gradient of the loss function with respect to w and b
-def gradient(w, b, x, y):
-    y_pred = w * x + b
-    dw = -2 * np.mean(x * (y_pred - y))
-    db = -2 * np.mean(y_pred - y)
-    return dw, db
+# Build neural network model
+model = keras.Sequential([
+    layers.Dense(64, activation='relu', input_shape=(784,)),
+    layers.Dense(32, activation='relu'),
+    layers.Dense(10, activation='softmax')
+])
 
-# Implement Gradient Descent
-for i in range(iterations):
-    # Generate random data
-    x = np.random.rand(1)
-    y = np.random.rand(1)
+# Compile model
+model.compile(optimizer='adam',
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
 
-    # Calculate the gradient
-    dw, db = gradient(w, b, x, y)
+# Train model
+model.fit(X_train, y_train, epochs=10, batch_size=128, verbose=2)
 
-    # Update the model parameters
-    w = w - alpha * dw
-    b = b - alpha * db
-
-    # Print the loss at each iteration
-    y_pred = w * x + b
-    print(f"Iteration {i+1}, Loss: {loss(y_pred, y)}")
+# Evaluate model
+test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
+print(f'Test accuracy: {test_acc:.2f}')
 ```
 
-This code implements the Gradient Descent algorithm for linear regression, where the goal is to find the optimal parameters (w and b) that minimize the mean squared error between the predicted output (y_pred) and the actual output (y). The algorithm starts with random initial parameters and updates them iteratively using the gradient of the loss function, until convergence is reached.
+This code first loads the MNIST dataset and normalizes the pixel values. Then it builds a neural network model with two hidden layers and a softmax output layer. The model is then compiled with the Adam optimizer and sparse categorical cross-entropy loss. Finally, the model is trained on the training set and evaluated on the testing set.
 */
