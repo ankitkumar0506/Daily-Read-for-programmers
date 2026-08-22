@@ -1,245 +1,205 @@
 <?php
-// 2026-08-21 02:45:36
+// 2026-08-22 02:36:48
 
 /* PHP
-Topic: Using PDO for Secure Database Access with Prepared Statements
+Topic: PHP Generators for Memory‑Efficient Iteration  
 
-Explanation:
-PDO (PHP Data Objects) provides a uniform interface for accessing many different databases. It supports prepared statements, which separate SQL code from data, preventing SQL injection attacks. With PDO you can bind parameters by name or position, and the driver handles proper escaping. Error handling can be managed using exceptions for cleaner code. PDO also offers transaction support, making it easy to commit or roll back multiple queries as a single unit.
+Explanation:  
+1. Generators allow a function to return values one at a time using the yield keyword, preserving its execution state between calls.  
+2. Unlike returning a full array, a generator produces each element on demand, which dramatically reduces memory usage for large data sets.  
+3. The generator function can be iterated with a foreach loop just like an array, but the underlying values are created lazily.  
+4. Generators are especially useful when reading large files, streaming database results, or handling infinite sequences.  
+5. They also simplify code by removing the need for manual iterator classes while keeping performance high.  
 
-Code example (with comments):
+Code Example:  
 <?php
-// Create a new PDO instance for a MySQL database
-$dsn = 'mysql:host=localhost;dbname=example_db;charset=utf8mb4';
-$username = 'db_user';
-$password = 'db_pass';
-$options = [
-    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,       // Fetch results as associative arrays
-    PDO::ATTR_EMULATE_PREPARES   => false,                  // Use native prepared statements
-];
-$pdo = new PDO($dsn, $username, $password, $options);
+// Define a generator that yields numbers from 1 up to $max
+function numbersUpTo(int $max) {
+    for ($i = 1; $i <= $max; $i++) {
+        yield $i;               // pause execution and return $i
+    }
+}
 
-// Prepare an INSERT statement with named placeholders
-$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())";
-$stmt = $pdo->prepare($sql);
-
-// Bind values to the placeholders and execute the statement
-$stmt->execute([
-    ':username' => 'johndoe',
-    ':email'    => 'john@example.com'
-]);
-
-// Prepare a SELECT statement with a positional placeholder
-$sqlSelect = "SELECT id, username, email FROM users WHERE username = ?";
-$stmtSelect = $pdo->prepare($sqlSelect);
-
-// Execute with the parameter value
-$stmtSelect->execute(['johndoe']);
-
-// Fetch the result
-$user = $stmtSelect->fetch();
-
-if ($user) {
-    echo "User ID: " . $user['id'] . "\n";
-    echo "Username: " . $user['username'] . "\n";
-    echo "Email: " . $user['email'] . "\n";
-} else {
-    echo "No user found.\n";
+// Use the generator in a foreach loop; values are produced one by one
+foreach (numbersUpTo(1000000) as $number) {
+    // Process each $number here
+    if ($number > 5) {
+        break;                // stop early for demonstration purposes
+    }
+    echo $number . PHP_EOL;   // output the current number
 }
 ?>
 */
 
 /* Laravel
-Topic: Laravel Queues and Jobs
+Topic: Laravel Service Container and Dependency Injection
 
 Explanation:  
-Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or making API calls to a background worker. By pushing jobs onto a queue, the main request can return quickly while the heavy work is processed asynchronously. Laravel provides a unified API for many queue drivers (database, Redis, SQS, etc.) and a simple way to define job classes. Jobs can be delayed, retried, and failed jobs are automatically recorded for later inspection. Using queues improves user experience and helps scale applications without blocking HTTP requests.
+The Laravel service container is a powerful tool that manages class dependencies and performs automatic resolution of objects. It allows you to bind interfaces to concrete implementations, making your code more flexible and testable. When a class declares its dependencies in its constructor, the container will automatically inject the appropriate instances. This pattern reduces coupling and simplifies swapping implementations, especially during testing. Understanding the container is essential for building maintainable Laravel applications.
 
-Code example (Job class and dispatching):
-
+Code example:
 <?php
-namespace App\Jobs;
+namespace App\Providers;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use App\Mail\WelcomeMail;
-use Mail;
+use Illuminate\Support\ServiceProvider;
+use App\Contracts\PaymentGateway;
+use App\Services\StripePaymentGateway;
 
-class SendWelcomeEmail implements ShouldQueue
+class AppServiceProvider extends ServiceProvider
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    protected $user; // the user instance to email
-
-    // Constructor receives the user model
-    public function __construct($user)
+    public function register()
     {
-        $this->user = $user;
-    }
-
-    // The job logic that runs in the background
-    public function handle()
-    {
-        // Build and send the welcome email
-        Mail::to($this->user->email)->send(new WelcomeMail($this->user));
-    }
-
-    // Optional: specify number of retry attempts
-    public function retryUntil()
-    {
-        return now()->addMinutes(10);
+        // Bind the PaymentGateway interface to the Stripe implementation
+        $this->app->bind(PaymentGateway::class, StripePaymentGateway::class);
     }
 }
 
-// Dispatching the job from a controller or service
-use App\Jobs\SendWelcomeEmail;
+namespace App\Contracts;
 
-public function register(Request $request)
+interface PaymentGateway
 {
-    $user = User::create($request->only('name', 'email', 'password'));
+    public function charge(float $amount);
+}
 
-    // Push the job onto the default queue; it will be processed asynchronously
-    SendWelcomeEmail::dispatch($user)->onQueue('emails');
+namespace App\Services;
 
-    return response()->json(['message' => 'User registered, welcome email queued.']);
+use App\Contracts\PaymentGateway;
+
+class StripePaymentGateway implements PaymentGateway
+{
+    public function charge(float $amount)
+    {
+        // Here you would call Stripe's API to charge the amount
+        return "Charged $$amount using Stripe.";
+    }
+}
+
+namespace App\Http\Controllers;
+
+use App\Contracts\PaymentGateway;
+
+class CheckoutController extends Controller
+{
+    protected $paymentGateway;
+
+    // The service container injects the concrete implementation automatically
+    public function __construct(PaymentGateway $paymentGateway)
+    {
+        $this->paymentGateway = $paymentGateway;
+    }
+
+    public function pay()
+    {
+        $result = $this->paymentGateway->charge(99.99);
+        return $result;
+    }
 }
 ?>
 */
 
 /* MySQL
-Topic: MySQL Stored Procedures with IN, OUT, and INOUT Parameters  
+Topic: Prepared Statements in MySQL
 
-Explanation:  
-A stored procedure is a named set of SQL statements that can be invoked repeatedly.  
-It can accept input parameters (IN), return values through output parameters (OUT), or both (INOUT).  
-Using parameters makes the procedure flexible and allows complex logic to be encapsulated on the server side.  
-Procedures improve performance by reducing network round‑trips and enable reuse of business rules.  
-They can be called from applications, scripts, or other SQL statements.
+Explanation:
+Prepared statements allow you to separate SQL code from data values, improving security by preventing SQL injection attacks. They are compiled once by the server and can be executed many times with different parameters, which can also boost performance for repetitive queries. MySQL supports both server‑side (PREPARE/EXECUTE) and client‑side (using APIs like PDO or MySQLi) prepared statements. Placeholders are represented by ? in the SQL string, and values are bound before execution. This technique is essential for building robust, scalable applications that interact with a database.
 
-Code example (with comments):
-CREATE DATABASE IF NOT EXISTS demo_db;
-USE demo_db;
+Code Example (server‑side PREPARE/EXECUTE syntax):
+-- Define the SQL with a placeholder for the user id
+SET @sql = 'SELECT username, email FROM users WHERE id = ?';
 
--- Create a table to store employee salaries
-CREATE TABLE IF NOT EXISTS employees (
-    emp_id INT PRIMARY KEY AUTO_INCREMENT,
-    name VARCHAR(50) NOT NULL,
-    salary DECIMAL(10,2) NOT NULL
-);
+-- Prepare the statement; MySQL stores it as stmt1
+PREPARE stmt1 FROM @sql;
 
--- Insert sample data
-INSERT INTO employees (name, salary) VALUES
-('Alice', 75000.00),
-('Bob', 62000.00),
-('Carol', 88000.00);
+-- Set a variable that will be bound to the placeholder
+SET @user_id = 42;
 
--- Drop the procedure if it already exists
-DROP PROCEDURE IF EXISTS adjust_salary;
+-- Execute the prepared statement, passing the variable as the parameter
+EXECUTE stmt1 USING @user_id;
 
--- Create a stored procedure that adjusts an employee's salary
-CREATE PROCEDURE adjust_salary (
-    IN p_emp_id INT,                -- input: employee identifier
-    IN p_increment_percent DECIMAL(5,2),  -- input: percentage increase
-    OUT p_new_salary DECIMAL(10,2)  -- output: the new salary after adjustment
-)
-BEGIN
-    DECLARE v_current_salary DECIMAL(10,2);
-
-    -- Retrieve the current salary for the given employee
-    SELECT salary INTO v_current_salary
-    FROM employees
-    WHERE emp_id = p_emp_id;
-
-    -- Calculate the new salary
-    SET p_new_salary = v_current_salary * (1 + p_increment_percent / 100);
-
-    -- Update the employee record with the new salary
-    UPDATE employees
-    SET salary = p_new_salary
-    WHERE emp_id = p_emp_id;
-END;
-
--- Call the procedure for employee with ID 2, giving a 5% raise
-CALL adjust_salary(2, 5.00, @updated_salary);
-
--- Retrieve the output value
-SELECT @updated_salary AS new_salary_for_employee_2;
-
--- Verify the table reflects the change
-SELECT * FROM employees;
+-- Retrieve the result set (if needed) and then clean up
+DEALLOCATE PREPARE stmt1;
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: JavaScript Closures
 
-Explanation:
-A closure is a function that retains access to its lexical scope even when that function is executed outside of its original context.  
-Closures allow inner functions to remember the environment in which they were created, preserving variables from the outer function.  
-They are created automatically each time a function is defined, and the retained variables remain alive as long as they are referenced.  
-Closures are useful for data privacy, partial application, and creating function factories.  
-Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state between function calls.
+Explanation:  
+A closure is a function that retains access to the variables from its outer (enclosing) scope even after that outer function has finished executing. This allows the inner function to remember the environment in which it was created, enabling data privacy and function factories. Closures are created every time a function is defined inside another function, and they capture the lexical scope at that moment. They are fundamental for patterns like module encapsulation, partial application, and callbacks that need persistent state. Understanding closures helps avoid common pitfalls such as unintentionally sharing mutable state across invocations.
 
-Code Example:
-function makeCounter(initialValue) {          // outer function creates a private variable
-    let count = initialValue;                // this variable is captured by the inner function
-    return function() {                     // the returned inner function forms a closure
-        count += 1;                          // it can read and modify 'count' each call
-        console.log(count);
+Code example:
+// Outer function creates a private variable and returns an inner function
+function createCounter(initialValue) {
+    let count = initialValue;               // This variable is private to the closure
+    return function() {                    // The inner function forms a closure over 'count'
+        count += 1;                         // It can read and modify 'count' each call
+        return count;                       // Returns the updated count
     };
 }
 
-const counterA = makeCounter(0);   // each call to makeCounter produces a separate closure
-const counterB = makeCounter(10);
+// Using the closure
+const counterA = createCounter(0);
+console.log(counterA()); // 1
+console.log(counterA()); // 2
 
-counterA(); // prints 1
-counterA(); // prints 2
-counterB(); // prints 11
-counterA(); // prints 3
+const counterB = createCounter(10);
+console.log(counterB()); // 11
+console.log(counterA()); // 3   // counterA maintains its own independent state
 
-// The variables 'count' inside counterA and counterB are independent because each closure has its own lexical environment.
+// The inner functions retain access to their own 'count' variables even after createCounter has returned.
 */
 
 /* AI
-Topic: Few-Shot Prompt Engineering with OpenAI’s Chat Completion API  
+Topic: Few‑Shot Prompt Engineering with OpenAI’s Completion API  
 
 Explanation:  
-Few‑shot prompting supplies the model with a handful of input‑output examples to shape its behavior without fine‑tuning. By embedding these examples directly in the system or user messages, you can guide the model to follow a specific format, adopt a particular tone, or solve a defined class of problems. This technique works well for tasks like data extraction, code generation, or custom Q&A where a full dataset for training is unavailable. The quality of the examples and their order strongly influence the results, so concise, representative cases are key. Using the Chat Completion endpoint, you can programmatically construct the prompt and retrieve the model’s response in real time.  
+Few‑shot prompting lets you demonstrate the desired behavior by including a few input‑output pairs directly in the prompt. The model then infers the pattern and applies it to new inputs, often achieving higher accuracy than a single‑shot prompt. This technique works well for classification, translation, or data extraction tasks where you can illustrate the format you expect. By carefully selecting diverse examples and keeping the prompt concise, you can guide large language models to produce consistent, high‑quality results without fine‑tuning. The approach is language‑agnostic and can be used with any OpenAI model that supports completions.
 
-Code example (Python, using the openai library):  
+Code example (Python, using the official openai package):
 
-import os  
-import openai  
+import os
+import openai
 
-# Load your API key from an environment variable for security  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Load your API key from an environment variable or directly set it here
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Define a few‑shot prompt that teaches the model to convert natural‑language dates to ISO format  
-few_shot_examples = [  
-    {"role": "user", "content": "Convert the date 'July 4, 2023' to ISO format."},  
-    {"role": "assistant", "content": "2023-07-04"},  
-    {"role": "user", "content": "Convert the date '12th February 1999' to ISO format."},  
-    {"role": "assistant", "content": "1999-02-12"}  
-]  
+# Define a few‑shot prompt for sentiment analysis
+prompt = """Classify the sentiment of the following sentences as Positive, Negative, or Neutral.
 
-# New query that follows the same pattern  
-new_query = {"role": "user", "content": "Convert the date 'March 15th, 2025' to ISO format."}  
+Sentence: I love the new design of the app.
+Sentiment: Positive
 
-# Combine the examples with the new query  
-messages = few_shot_examples + [new_query]  
+Sentence: The update caused the app to crash frequently.
+Sentiment: Negative
 
-# Call the Chat Completion API  
-response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",          # lightweight model suitable for prompt‑engineering tasks  
-    messages=messages,  
-    temperature=0.0               # deterministic output for format‑sensitive tasks  
-)  
+Sentence: The app loads quickly.
+Sentiment: Neutral
 
-# Extract and print the model’s answer  
-answer = response.choices[0].message.content.strip()  
-print("ISO date:", answer)   # Expected output: 2025-03-15
+Sentence: {input_sentence}
+Sentiment:"""
+
+def classify_sentiment(sentence):
+    # Insert the user sentence into the prompt template
+    filled_prompt = prompt.format(input_sentence=sentence)
+
+    response = openai.Completion.create(
+        model="text-davinci-003",          # Choose a capable LLM
+        prompt=filled_prompt,
+        max_tokens=10,                     # Only need a short label
+        temperature=0.0,                   # Deterministic output for classification
+        stop=["\n"]                        # Stop at the end of the label
+    )
+    # Extract the model's answer and strip whitespace
+    sentiment = response.choices[0].text.strip()
+    return sentiment
+
+# Example usage
+if __name__ == "__main__":
+    test_sentences = [
+        "The battery life is terrible after the latest update.",
+        "Great job on the new feature rollout!",
+        "It works as expected."
+    ]
+    for s in test_sentences:
+        print(f"Sentence: {s}\nPredicted Sentiment: {classify_sentiment(s)}\n")
 */
 
