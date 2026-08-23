@@ -1,205 +1,237 @@
 <?php
-// 2026-08-22 02:36:48
+// 2026-08-23 02:44:55
 
 /* PHP
-Topic: PHP Generators for Memory‑Efficient Iteration  
+Topic: PHP PDO Prepared Statements for Secure Database Access  
 
 Explanation:  
-1. Generators allow a function to return values one at a time using the yield keyword, preserving its execution state between calls.  
-2. Unlike returning a full array, a generator produces each element on demand, which dramatically reduces memory usage for large data sets.  
-3. The generator function can be iterated with a foreach loop just like an array, but the underlying values are created lazily.  
-4. Generators are especially useful when reading large files, streaming database results, or handling infinite sequences.  
-5. They also simplify code by removing the need for manual iterator classes while keeping performance high.  
+Prepared statements separate SQL code from data, preventing SQL injection attacks by sending the query structure to the server first and then binding user‑supplied values. PDO (PHP Data Objects) provides a consistent interface for many database systems, making it easier to write portable code. Using placeholders (named or positional) allows the same statement to be executed multiple times with different data efficiently. Errors can be handled with exceptions, giving clear debugging information. The approach also improves performance for repeated queries because the database can reuse the compiled statement.  
 
-Code Example:  
+Code example with comments:  
+
 <?php
-// Define a generator that yields numbers from 1 up to $max
-function numbersUpTo(int $max) {
-    for ($i = 1; $i <= $max; $i++) {
-        yield $i;               // pause execution and return $i
-    }
-}
+// Create a new PDO instance with error mode set to exceptions
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'secret';
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+];
+$pdo = new PDO($dsn, $username, $password, $options);
 
-// Use the generator in a foreach loop; values are produced one by one
-foreach (numbersUpTo(1000000) as $number) {
-    // Process each $number here
-    if ($number > 5) {
-        break;                // stop early for demonstration purposes
-    }
-    echo $number . PHP_EOL;   // output the current number
+// Define a SQL query with named placeholders
+$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())";
+
+// Prepare the statement once
+$stmt = $pdo->prepare($sql);
+
+// Sample data that might come from a form
+$userData = [
+    'username' => 'johndoe',
+    'email'    => 'john@example.com',
+];
+
+// Bind values and execute the statement
+$stmt->execute($userData);
+
+// Check if the insertion succeeded
+if ($stmt->rowCount() === 1) {
+    echo "User inserted successfully.";
+} else {
+    echo "Insert failed.";
 }
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container and Dependency Injection
+Topic: Laravel Queues and Jobs
 
 Explanation:  
-The Laravel service container is a powerful tool that manages class dependencies and performs automatic resolution of objects. It allows you to bind interfaces to concrete implementations, making your code more flexible and testable. When a class declares its dependencies in its constructor, the container will automatically inject the appropriate instances. This pattern reduces coupling and simplifies swapping implementations, especially during testing. Understanding the container is essential for building maintainable Laravel applications.
+Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or calling external APIs to a background process. By pushing a job onto a queue, the main request can respond quickly while the work is handled asynchronously. Laravel provides a unified API for different queue drivers (database, Redis, SQS, etc.) and includes built‑in support for retries and failed job handling. Jobs are simple PHP classes that implement the ShouldQueue contract and contain a handle method where the task logic lives. Workers run continuously, pulling jobs from the queue and executing them in isolation from the HTTP request lifecycle.
 
-Code example:
+Code example (Job class and dispatching it):
+
 <?php
-namespace App\Providers;
+namespace App\Jobs;
 
-use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;
-use App\Services\StripePaymentGateway;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use App\Mail\WelcomeMail;
+use Mail;
 
-class AppServiceProvider extends ServiceProvider
+class SendWelcomeEmail implements ShouldQueue
 {
-    public function register()
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    protected $userEmail;
+
+    // Constructor receives data needed for the job
+    public function __construct($email)
     {
-        // Bind the PaymentGateway interface to the Stripe implementation
-        $this->app->bind(PaymentGateway::class, StripePaymentGateway::class);
+        $this->userEmail = $email;
+    }
+
+    // This method is called by the queue worker
+    public function handle()
+    {
+        // Build and send the email – this runs in the background
+        Mail::to($this->userEmail)->send(new WelcomeMail());
     }
 }
 
-namespace App\Contracts;
-
-interface PaymentGateway
-{
-    public function charge(float $amount);
-}
-
-namespace App\Services;
-
-use App\Contracts\PaymentGateway;
-
-class StripePaymentGateway implements PaymentGateway
-{
-    public function charge(float $amount)
-    {
-        // Here you would call Stripe's API to charge the amount
-        return "Charged $$amount using Stripe.";
-    }
-}
-
-namespace App\Http\Controllers;
-
-use App\Contracts\PaymentGateway;
-
-class CheckoutController extends Controller
-{
-    protected $paymentGateway;
-
-    // The service container injects the concrete implementation automatically
-    public function __construct(PaymentGateway $paymentGateway)
-    {
-        $this->paymentGateway = $paymentGateway;
-    }
-
-    public function pay()
-    {
-        $result = $this->paymentGateway->charge(99.99);
-        return $result;
-    }
-}
+// Dispatching the job from a controller or service
+// The job will be placed onto the default queue connection
+$userEmail = 'newuser@example.com';
+SendWelcomeEmail::dispatch($userEmail);
 ?>
 */
 
 /* MySQL
-Topic: Prepared Statements in MySQL
+Topic: Common Table Expressions (CTE) and Recursive Queries
 
-Explanation:
-Prepared statements allow you to separate SQL code from data values, improving security by preventing SQL injection attacks. They are compiled once by the server and can be executed many times with different parameters, which can also boost performance for repetitive queries. MySQL supports both server‑side (PREPARE/EXECUTE) and client‑side (using APIs like PDO or MySQLi) prepared statements. Placeholders are represented by ? in the SQL string, and values are bound before execution. This technique is essential for building robust, scalable applications that interact with a database.
+Explanation:  
+A Common Table Expression (CTE) is a temporary named result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. CTEs make complex queries easier to read by breaking them into logical parts. They are defined using the WITH clause and exist only for the duration of the statement. When a CTE references itself, it becomes a recursive CTE, useful for traversing hierarchical data such as organizational charts or tree structures. Recursive CTEs consist of an anchor member (the base case) and a recursive member that repeatedly references the CTE until a termination condition is met.
 
-Code Example (server‑side PREPARE/EXECUTE syntax):
--- Define the SQL with a placeholder for the user id
-SET @sql = 'SELECT username, email FROM users WHERE id = ?';
+Code example (recursive CTE to list an employee hierarchy):
 
--- Prepare the statement; MySQL stores it as stmt1
-PREPARE stmt1 FROM @sql;
+-- Employees table: id, name, manager_id (null if top‑level manager)
+CREATE TABLE employees (
+    id INT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    manager_id INT NULL,
+    FOREIGN KEY (manager_id) REFERENCES employees(id)
+);
 
--- Set a variable that will be bound to the placeholder
-SET @user_id = 42;
+-- Insert sample data
+INSERT INTO employees (id, name, manager_id) VALUES
+(1, 'Alice', NULL),   -- top‑level manager
+(2, 'Bob', 1),
+(3, 'Carol', 1),
+(4, 'Dave', 2),
+(5, 'Eve', 2),
+(6, 'Frank', 3);
 
--- Execute the prepared statement, passing the variable as the parameter
-EXECUTE stmt1 USING @user_id;
+-- Recursive CTE to retrieve all subordinates of a given manager (e.g., Alice, id=1)
+WITH RECURSIVE hierarchy AS (
+    -- Anchor member: start with the selected manager
+    SELECT id, name, manager_id, 0 AS level
+    FROM employees
+    WHERE id = 1
 
--- Retrieve the result set (if needed) and then clean up
-DEALLOCATE PREPARE stmt1;
+    UNION ALL
+
+    -- Recursive member: find employees whose manager_id matches any id already in the hierarchy
+    SELECT e.id, e.name, e.manager_id, h.level + 1
+    FROM employees e
+    JOIN hierarchy h ON e.manager_id = h.id
+)
+SELECT id, name, manager_id, level
+FROM hierarchy
+ORDER BY level, id;   -- result shows Alice at level 0, her direct reports at level 1, etc.
 */
 
 /* JavaScript
-Topic: JavaScript Closures
+Topic: Event Delegation in JavaScript  
 
 Explanation:  
-A closure is a function that retains access to the variables from its outer (enclosing) scope even after that outer function has finished executing. This allows the inner function to remember the environment in which it was created, enabling data privacy and function factories. Closures are created every time a function is defined inside another function, and they capture the lexical scope at that moment. They are fundamental for patterns like module encapsulation, partial application, and callbacks that need persistent state. Understanding closures helps avoid common pitfalls such as unintentionally sharing mutable state across invocations.
+Event delegation is a technique where a single event listener is attached to a parent element instead of many individual child elements. The listener takes advantage of event bubbling to capture events that originate from its descendants. This reduces memory usage and improves performance, especially when dealing with large or dynamically generated lists. It also simplifies code maintenance because you don’t need to add or remove listeners as children are added or removed. Use event.target inside the handler to determine which child triggered the event.
 
-Code example:
-// Outer function creates a private variable and returns an inner function
-function createCounter(initialValue) {
-    let count = initialValue;               // This variable is private to the closure
-    return function() {                    // The inner function forms a closure over 'count'
-        count += 1;                         // It can read and modify 'count' each call
-        return count;                       // Returns the updated count
-    };
-}
+Code example (with comments):
 
-// Using the closure
-const counterA = createCounter(0);
-console.log(counterA()); // 1
-console.log(counterA()); // 2
+// Parent container that holds many list items
+var listContainer = document.getElementById('menu');
 
-const counterB = createCounter(10);
-console.log(counterB()); // 11
-console.log(counterA()); // 3   // counterA maintains its own independent state
+// Attach one click listener to the container
+listContainer.addEventListener('click', function(event) {
+    // Check if the clicked element is a list item (or has a specific class)
+    if (event.target && event.target.matches('li.menu-item')) {
+        // Perform the desired action for the clicked item
+        console.log('You clicked on menu item:', event.target.textContent);
+        // Example: toggle a selected class
+        event.target.classList.toggle('selected');
+    }
+});
 
-// The inner functions retain access to their own 'count' variables even after createCounter has returned.
+// HTML structure (for reference):
+// <ul id="menu">
+//     <li class="menu-item">Home</li>
+//     <li class="menu-item">About</li>
+//     <li class="menu-item">Contact</li>
+// </ul>
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Completion API  
+Topic: OpenAI Function Calling API in Python
 
 Explanation:  
-Few‑shot prompting lets you demonstrate the desired behavior by including a few input‑output pairs directly in the prompt. The model then infers the pattern and applies it to new inputs, often achieving higher accuracy than a single‑shot prompt. This technique works well for classification, translation, or data extraction tasks where you can illustrate the format you expect. By carefully selecting diverse examples and keeping the prompt concise, you can guide large language models to produce consistent, high‑quality results without fine‑tuning. The approach is language‑agnostic and can be used with any OpenAI model that supports completions.
+OpenAI’s function calling lets a language model suggest structured data that your code can act upon, bridging natural language and programmatic actions. You define a JSON schema for the function, and the model returns arguments matching that schema when appropriate. This reduces parsing errors compared to free‑form text extraction. The workflow involves sending a user prompt, receiving a response with a "function_call" field, and then invoking the real function with the parsed arguments. It is especially useful for building assistants that can query databases, schedule events, or control applications directly from chat. Proper error handling around the function call ensures resilience when the model returns incomplete or unexpected arguments.
 
-Code example (Python, using the official openai package):
+Code example (Python, using the openai library):
 
-import os
 import openai
 
-# Load your API key from an environment variable or directly set it here
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Set your API key (replace with your actual key or use environment variable)
+openai.api_key = "sk-YOUR_API_KEY"
 
-# Define a few‑shot prompt for sentiment analysis
-prompt = """Classify the sentiment of the following sentences as Positive, Negative, or Neutral.
+# Define the function schema the model can call
+def get_weather(city: str, date: str) -> str:
+    """Placeholder that pretends to fetch weather data."""
+    # In a real implementation, query a weather service here
+    return f"The weather in {city} on {date} will be sunny with a high of 25°C."
 
-Sentence: I love the new design of the app.
-Sentiment: Positive
+# Create the JSON description of the function for the model
+weather_function = {
+    "name": "get_weather",
+    "description": "Retrieve the weather forecast for a given city and date.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "city": {"type": "string", "description": "Name of the city"},
+            "date": {"type": "string", "description": "Date in YYYY-MM-DD format"}
+        },
+        "required": ["city", "date"]
+    }
+}
 
-Sentence: The update caused the app to crash frequently.
-Sentiment: Negative
+# User query that may require a function call
+user_message = {"role": "user", "content": "Will it rain in Paris tomorrow?"}
 
-Sentence: The app loads quickly.
-Sentiment: Neutral
+# Send the request with the function definition
+response = openai.ChatCompletion.create(
+    model="gpt-4-0613",
+    messages=[user_message],
+    functions=[weather_function],
+    function_call="auto"  # Let the model decide when to call
+)
 
-Sentence: {input_sentence}
-Sentiment:"""
+# Extract the model's decision
+message = response["choices"][0]["message"]
 
-def classify_sentiment(sentence):
-    # Insert the user sentence into the prompt template
-    filled_prompt = prompt.format(input_sentence=sentence)
+if message.get("function_call"):
+    # Parse the arguments supplied by the model
+    import json
+    function_name = message["function_call"]["name"]
+    arguments = json.loads(message["function_call"]["arguments"])
 
-    response = openai.Completion.create(
-        model="text-davinci-003",          # Choose a capable LLM
-        prompt=filled_prompt,
-        max_tokens=10,                     # Only need a short label
-        temperature=0.0,                   # Deterministic output for classification
-        stop=["\n"]                        # Stop at the end of the label
-    )
-    # Extract the model's answer and strip whitespace
-    sentiment = response.choices[0].text.strip()
-    return sentiment
-
-# Example usage
-if __name__ == "__main__":
-    test_sentences = [
-        "The battery life is terrible after the latest update.",
-        "Great job on the new feature rollout!",
-        "It works as expected."
-    ]
-    for s in test_sentences:
-        print(f"Sentence: {s}\nPredicted Sentiment: {classify_sentiment(s)}\n")
+    # Call the actual Python function
+    if function_name == "get_weather":
+        result = get_weather(arguments["city"], arguments["date"])
+        # Send the function result back to the model (optional, for follow‑up)
+        follow_up = openai.ChatCompletion.create(
+            model="gpt-4-0613",
+            messages=[
+                user_message,
+                message,
+                {"role": "function", "name": function_name, "content": result}
+            ]
+        )
+        print(follow_up["choices"][0]["message"]["content"])
+else:
+    # Model responded without needing a function call
+    print(message["content"])
 */
 
