@@ -1,219 +1,223 @@
 <?php
-// 2026-08-25 02:37:51
+// 2026-08-26 02:47:13
 
 /* PHP
-Topic: PDO Prepared Statements
+Topic: PHP Generators
 
 Explanation:
-- PDO (PHP Data Objects) provides a consistent interface for accessing different databases.
-- Prepared statements separate the SQL query structure from the data values.
-- This separation prevents SQL injection by automatically escaping user-supplied input.
-- Parameters are bound to placeholders before execution, allowing the same statement to be reused with different values.
-- Using prepared statements can also improve performance for repeated queries.
+PHP generators allow you to create iterators without the overhead of building an entire array in memory.  
+They are defined using the "yield" keyword inside a function, which pauses execution and returns a value each time it is called.  
+When the generator is resumed, execution continues from the point after the last "yield".  
+This makes generators ideal for processing large data sets, streaming files, or any situation where you need lazy evaluation.  
+Because only one value is kept in memory at a time, memory consumption stays low even for very large sequences.
 
-Code Example:
-// Create a new PDO instance (replace DSN, username, password with your credentials)
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$username = 'dbuser';
-$password = 'dbpass';
-$options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-];
-$pdo = new PDO($dsn, $username, $password, $options);
+Code example:
+<?php
+// A generator that yields numbers from 1 up to a given limit
+function numberSequence(int $limit): Generator {
+    for ($i = 1; $i <= $limit; $i++) {
+        // Yield the current number and pause execution
+        yield $i;
+    }
+}
 
-// Prepare an INSERT statement with named placeholders
-$sql = "INSERT INTO users (email, password_hash, created_at) VALUES (:email, :hash, :created)";
-$stmt = $pdo->prepare($sql);
+// Using the generator in a foreach loop
+foreach (numberSequence(5) as $number) {
+    // Each iteration receives the next yielded value
+    echo "Number: $number\n";
+}
 
-// Bind values to the placeholders
-$email = 'alice@example.com';
-$hash = password_hash('secret123', PASSWORD_DEFAULT);
-$created = date('Y-m-d H:i:s');
-
-$stmt->bindParam(':email', $email);
-$stmt->bindParam(':hash', $hash);
-$stmt->bindParam(':created', $created);
-
-// Execute the prepared statement
-$stmt->execute();
-
-// The user record is now safely inserted without risk of SQL injection.
+// The generator can also be manually advanced using the iterator interface
+$gen = numberSequence(3);
+echo $gen->current() . "\n"; // Outputs 1
+$gen->next();
+echo $gen->current() . "\n"; // Outputs 2
+$gen->next();
+echo $gen->current() . "\n"; // Outputs 3
+?>
 */
 
 /* Laravel
-Topic: Custom Validation Rules in Laravel
+Topic: Custom Form Request Validation in Laravel
 
-Explanation: Laravel allows developers to encapsulate complex validation logic into reusable rule objects. By implementing the Illuminate\Contracts\Validation\Rule interface, you can define both the validation check and the error message in a single class. This keeps your controller or form request clean and makes the rule easy to reuse across multiple forms. The rule can be applied using the new operator inside the validation array. Custom rules integrate seamlessly with Laravel’s existing validation system, including conditional validation and localization.
+Explanation:  
+A Form Request is a dedicated class that encapsulates validation logic for incoming HTTP requests. By extending the base FormRequest class you can centralize rules, messages, and authorization checks, keeping controllers clean and focused on business logic. Laravel automatically injects the request class into controller methods, and will abort the request with a 422 response if validation fails. Custom Form Requests also allow you to add after‑validation hooks for complex scenarios. Using them improves testability and reusability across different routes that share similar validation requirements.
 
-Code example:
-// File: app/Rules/Uppercase.php
+Code example with comments:
+
 <?php
-namespace App\Rules;
+namespace App\Http\Requests;
 
-use Illuminate\Contracts\Validation\Rule;
+use Illuminate\Foundation\Http\FormRequest;
 
-class Uppercase implements Rule
+class StorePostRequest extends FormRequest
 {
-    // Determine if the validation rule passes.
-    public function passes($attribute, $value)
+    // Determine if the user is authorized to make this request.
+    public function authorize()
     {
-        // Return true only when the value is completely uppercase.
-        return strtoupper($value) === $value;
+        // Return true to allow all users; implement your own logic as needed.
+        return true;
     }
 
-    // Return the validation error message.
-    public function message()
+    // Define the validation rules that apply to the request.
+    public function rules()
     {
-        return 'The :attribute must be uppercase.';
+        return [
+            'title'   => 'required|string|max:255',
+            'body'    => 'required|string',
+            'tags'    => 'array',
+            'tags.*'  => 'integer|exists:tags,id',
+        ];
+    }
+
+    // Customize the validation error messages (optional).
+    public function messages()
+    {
+        return [
+            'title.required' => 'A title is required for the post.',
+            'body.required'  => 'Please provide the content of the post.',
+        ];
+    }
+
+    // Add logic that runs after validation passes (optional).
+    protected function passedValidation()
+    {
+        // For example, trim whitespace from the title.
+        $this->merge([
+            'title' => trim($this->input('title')),
+        ]);
     }
 }
 
-// Using the custom rule in a controller or form request.
-use App\Rules\Uppercase;
+// In a controller method:
 
-public function store(Request $request)
+public function store(StorePostRequest $request)
 {
-    $validated = $request->validate([
-        'code' => ['required', 'string', new Uppercase],
-    ]);
+    // At this point the request has already been validated.
+    $validatedData = $request->validated();
 
-    // Continue processing with $validated data...
+    // Create a new post using the validated data.
+    $post = Post::create($validatedData);
+
+    // Attach tags if any were provided.
+    if (!empty($validatedData['tags'])) {
+        $post->tags()->attach($validatedData['tags']);
+    }
+
+    return response()->json($post, 201);
 }
+?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) and Recursive Queries
+Topic: MySQL Stored Procedures with IN, OUT, and INOUT Parameters
 
 Explanation:
-- A CTE is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-- It improves readability by allowing you to break complex queries into logical building blocks.  
-- The WITH clause defines the CTE; adding RECURSIVE enables the CTE to refer to itself for hierarchical data.  
-- Recursive CTEs consist of an anchor member (base case) and a recursive member that repeats until no new rows are produced.  
-- They are ideal for traversing trees such as organization charts, category hierarchies, or graph paths.  
-- The result of the CTE exists only for the duration of the statement that defines it.
+A stored procedure is a reusable set of SQL statements stored on the MySQL server.  
+It can accept input values (IN parameters), return values (OUT parameters), or both (INOUT).  
+Using parameters makes procedures flexible and allows complex logic to be executed with a single call.  
+Procedures help encapsulate business rules, improve performance by reducing round‑trips, and enhance security by limiting direct table access.  
+When defining a procedure, you must specify the parameter direction, name, and data type, then reference the parameters inside the body.
 
-Code example (MySQL 8+):
-WITH RECURSIVE category_path (id, name, parent_id, level) AS (  
-    -- Anchor member: start with top‑level categories (no parent)  
-    SELECT id, name, parent_id, 1  
-    FROM categories  
-    WHERE parent_id IS NULL  
-    UNION ALL  
-    -- Recursive member: join each child to its parent and increase the level  
-    SELECT c.id, c.name, c.parent_id, cp.level + 1  
-    FROM categories c  
-    JOIN category_path cp ON c.parent_id = cp.id  
-)  
--- Final query: list all categories with their depth in the hierarchy, ordered by level  
-SELECT id, name, parent_id, level  
-FROM category_path  
-ORDER BY level, name;
+Code example with comments:
+CREATE PROCEDURE GetEmployeeStats(
+    IN  p_department_id INT,          -- Input: department to analyze
+    OUT p_employee_count INT,        -- Output: total employees in the department
+    INOUT p_average_salary DECIMAL(10,2) -- Input/Output: starting average, updated with actual value
+)
+BEGIN
+    -- Calculate total number of employees in the given department
+    SELECT COUNT(*) INTO p_employee_count
+    FROM employees
+    WHERE department_id = p_department_id;
+
+    -- Compute the average salary for the department
+    SELECT AVG(salary) INTO p_average_salary
+    FROM employees
+    WHERE department_id = p_department_id;
+END;
+
+-- Example call:
+SET @dept_id = 5;
+SET @emp_cnt = 0;
+SET @avg_sal = 0.00;
+CALL GetEmployeeStats(@dept_id, @emp_cnt, @avg_sal);
+SELECT @emp_cnt AS employee_count, @avg_sal AS average_salary;
 */
 
 /* JavaScript
 Topic: Closures in JavaScript
 
-Explanation:
-A closure is a function that retains access to its lexical scope even when that function is executed outside of its original context.  
-It allows inner functions to remember the variables defined in their outer (enclosing) functions.  
-Closures are created every time a function is created, but they become especially useful for data privacy and function factories.  
-They enable patterns such as memoization, private state, and partial application without exposing internal variables.  
-Understanding closures is essential for mastering asynchronous code, event handlers, and modular design in JavaScript.  
+Explanation: 
+A closure is created when an inner function retains access to variables from its outer (enclosing) function even after that outer function has finished executing. This allows the inner function to remember the environment in which it was created, enabling data encapsulation and private state. Closures are useful for creating function factories, maintaining state across multiple calls, and implementing module patterns. Because the variables are kept alive by the closure, they are not garbage‑collected until the inner function is no longer reachable. Understanding closures helps avoid common pitfalls such as unintentionally sharing mutable state in loops.
 
 Code example with comments:
-function createCounter() {
-    // Private variable that will be captured by the inner function
+// Outer function that defines a private variable
+function makeCounter() {
+    // This variable is private to makeCounter
     let count = 0;
-    
-    // The returned function forms a closure over 'count'
-    return function increment() {
-        count++;                // Modify the closed-over variable
+
+    // Inner function forms a closure over 'count'
+    return function() {
+        // Increment the private count each time the returned function is called
+        count++;
         console.log('Current count:', count);
     };
 }
 
-// Create a new counter instance
-const counter = createCounter();
+// Create two independent counters
+const counterA = makeCounter(); // has its own 'count' variable
+const counterB = makeCounter(); // has a separate 'count' variable
 
-counter(); // Current count: 1
-counter(); // Current count: 2
-
-// Even if we create another counter, its 'count' is independent
-const anotherCounter = createCounter();
-anotherCounter(); // Current count: 1
-counter(); // Current count: 3   (continues the first closure)
+counterA(); // Output: Current count: 1
+counterA(); // Output: Current count: 2
+counterB(); // Output: Current count: 1 (independent from counterA)
 */
 
 /* AI
-Topic: Retrieval‑Augmented Generation (RAG) for Code Assistance
+Topic: Few‑Shot Prompt Engineering with the OpenAI GPT‑4 API  
 
 Explanation:  
-Retrieval‑Augmented Generation combines a large language model with a searchable knowledge base, allowing the model to pull relevant code snippets, documentation, or examples at inference time. This reduces hallucinations and improves factual accuracy, especially for programming tasks that require up‑to‑date APIs or language‑specific idioms. The pipeline typically consists of an embedding model to index a corpus, a vector store to perform similarity search, and a generative model that conditions on the retrieved context. RAG can be integrated into IDE extensions, chatbot assistants, or CI‑CD bots to provide precise suggestions on demand. Because the retrieval step is fast and inexpensive, RAG offers a scalable way to keep AI‑driven coding tools current without retraining the entire model.
+Few‑shot prompting lets you give a language model a small number of example inputs and outputs directly in the prompt, guiding it toward the desired behavior without any model fine‑tuning. By carefully selecting diverse demonstrations, you can improve consistency and reduce hallucinations for tasks like classification, extraction, or transformation. The approach works across different domains because the model infers the pattern from the examples. You can dynamically construct the prompt in code, inserting user data and the examples at runtime. This technique is especially useful for rapid prototyping when API latency is acceptable.  
 
-Code example (Python, using OpenAI’s gpt‑4o and FAISS for vector search):
+Code example (Python, using the openai library):  
 
-import os
-import json
-import openai
-import numpy as np
-import faiss
+import os  
+import openai  
 
-# Load API key from environment
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Set your OpenAI API key – keep it out of source control  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# 1. Prepare a small corpus of Python docs/snippets
-documents = [
-    {"id": 0, "text": "list comprehension: [x for x in iterable if condition]"},
-    {"id": 1, "text": "use pathlib for cross‑platform paths: Path('folder') / 'file.txt'"},
-    {"id": 2, "text": "asyncio run loop: asyncio.run(main())"},
-    {"id": 3, "text": "pandas read CSV: pd.read_csv('data.csv', dtype={'col': str})"},
-    {"id": 4, "text": "typing generics: def foo[T](arg: T) -> T: ..."},
-]
+def classify_sentiment(text):  
+    # Define a few demonstration pairs: sentence → sentiment label  
+    examples = [  
+        {"input": "I love the new features!", "label": "Positive"},  
+        {"input": "The update broke everything.", "label": "Negative"},  
+        {"input": "It's okay, nothing special.", "label": "Neutral"}  
+    ]  
 
-# 2. Embed each document with OpenAI embeddings (text-embedding-3-large)
-def embed(text):
-    resp = openai.Embedding.create(
-        model="text-embedding-3-large",
-        input=text
-    )
-    return np.array(resp["data"][0]["embedding"], dtype="float32")
+    # Build the prompt by concatenating the examples and the new query  
+    prompt = "Classify the sentiment of each sentence as Positive, Negative, or Neutral.\n\n"  
+    for ex in examples:  
+        prompt += f"Sentence: {ex['input']}\nSentiment: {ex['label']}\n\n"  
+    prompt += f"Sentence: {text}\nSentiment:"  
 
-embeddings = np.vstack([embed(doc["text"]) for doc in documents])
+    # Call the GPT‑4 completions endpoint  
+    response = openai.Completion.create(  
+        model="gpt-4",  
+        prompt=prompt,  
+        max_tokens=1,          # we only need the label token  
+        temperature=0.0,       # deterministic output for classification  
+        stop=["\n"]            # stop after the label line  
+    )  
 
-# 3. Build a FAISS index (inner product search)
-dim = embeddings.shape[1]
-index = faiss.IndexFlatIP(dim)
-faiss.normalize_L2(embeddings)   # normalize for cosine similarity
-index.add(embeddings)
+    # Extract and return the label from the model's response  
+    sentiment = response.choices[0].text.strip()  
+    return sentiment  
 
-# 4. Retrieval function: given a query, return top‑k docs
-def retrieve(query, k=2):
-    q_vec = embed(query)
-    faiss.normalize_L2(q_vec.reshape(1, -1))
-    distances, indices = index.search(q_vec.reshape(1, -1), k)
-    return [documents[i]["text"] for i in indices[0]]
-
-# 5. RAG generation: combine retrieved texts with the user prompt
-def rag_generate(user_prompt):
-    retrieved = retrieve(user_prompt, k=3)
-    context = "\n".join(retrieved)
-    system_prompt = (
-        "You are a helpful Python coding assistant. Use the provided context "
-        "verbatim when it answers the question. If the answer is not in the context, "
-        "state that you don't have enough information."
-    )
-    full_prompt = f"{system_prompt}\n\nContext:\n{context}\n\nQuestion: {user_prompt}"
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": full_prompt}],
-        temperature=0.2,
-    )
-    return response.choices[0].message.content.strip()
-
-# Example usage
-question = "How do I read a CSV file into a pandas DataFrame with specific column types?"
-answer = rag_generate(question)
-print("Answer:", answer)
+# Example usage  
+if __name__ == "__main__":  
+    test_sentence = "The customer service was surprisingly helpful."  
+    print(f"Sentiment: {classify_sentiment(test_sentence)}")  
 */
 
