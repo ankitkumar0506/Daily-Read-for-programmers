@@ -1,213 +1,262 @@
 <?php
-// 2026-08-28 13:08:38
+// 2026-08-29 08:07:44
 
 /* PHP
-Topic: PDO Prepared Statements  
+Topic: PDO Prepared Statements for Secure Database Access
 
 Explanation:  
-PDO (PHP Data Objects) provides a consistent interface for accessing databases.  
-Prepared statements separate the SQL query from its data, protecting against SQL injection.  
-They allow the database engine to parse the query once and execute it multiple times with different parameters.  
-Using PDO, you can bind values by name or position, and the driver handles the appropriate escaping.  
-This approach improves security and can boost performance for repeated queries.  
+PDO (PHP Data Objects) provides a consistent interface for accessing various databases. Using prepared statements with PDO helps prevent SQL injection by separating SQL code from data. Placeholders are used in the SQL query, and actual values are bound later. PDO also supports named and positional placeholders, giving flexibility in query design. Errors can be handled via exceptions for better debugging and reliability. This approach makes database interactions both secure and maintainable.
 
-Code example (with comments):  
-
+Code example:
+// Database connection using PDO
 <?php
-// Create a new PDO instance (replace DSN, username, password with your credentials)
 $dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$username = 'dbuser';
-$password = 'dbpass';
-$options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC // Fetch results as associative arrays
-];
-$pdo = new PDO($dsn, $username, $password, $options);
+$username = 'db_user';
+$password = 'db_pass';
+
+try {
+    // Enable exceptions for error handling
+    $pdo = new PDO($dsn, $username, $password, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
+    ]);
+} catch (PDOException $e) {
+    die('Connection failed: ' . $e->getMessage());
+}
 
 // Prepare an INSERT statement with named placeholders
-$sql = "INSERT INTO users (email, password_hash, created_at) VALUES (:email, :hash, NOW())";
+$sql = "INSERT INTO users (username, email, password_hash) 
+        VALUES (:username, :email, :password_hash)";
 $stmt = $pdo->prepare($sql);
 
-// Bind values to the placeholders
-$email = 'alice@example.com';
-$passwordPlain = 'Secret123!';
-$hash = password_hash($passwordPlain, PASSWORD_BCRYPT);
-$stmt->bindParam(':email', $email);
-$stmt->bindParam(':hash', $hash);
+// Sample data to insert
+$data = [
+    ':username'      => 'johndoe',
+    ':email'         => 'johndoe@example.com',
+    ':password_hash' => password_hash('secret123', PASSWORD_DEFAULT)
+];
 
-// Execute the prepared statement
-$stmt->execute();
+// Execute the prepared statement with bound values
+try {
+    $stmt->execute($data);
+    echo "User inserted successfully. ID: " . $pdo->lastInsertId();
+} catch (PDOException $e) {
+    echo "Insert failed: " . $e->getMessage();
+}
 
-// Check how many rows were inserted
-echo "Rows inserted: " . $stmt->rowCount() . PHP_EOL;
+// Example of a SELECT query using positional placeholders
+$searchEmail = 'johndoe@example.com';
+$selectSql = "SELECT id, username FROM users WHERE email = ?";
+$selectStmt = $pdo->prepare($selectSql);
+$selectStmt->execute([$searchEmail]);
 
-// Example of a SELECT with positional placeholders
-$stmt = $pdo->prepare("SELECT id, email FROM users WHERE email = ?");
-$stmt->execute([$email]);
-$user = $stmt->fetch();
-
-if ($user) {
-    echo "User ID: " . $user['id'] . " Email: " . $user['email'] . PHP_EOL;
-} else {
-    echo "No user found." . PHP_EOL;
+while ($row = $selectStmt->fetch(PDO::FETCH_ASSOC)) {
+    echo "User ID: {$row['id']}, Username: {$row['username']}\n";
 }
 ?>
 */
 
 /* Laravel
-Topic: Laravel Queues and Jobs
+Laravel Service Container and Dependency Injection  
 
-Explanation:  
-Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing uploads, or generating reports to a background process. By pushing jobs onto a queue, the main request can return quickly while the worker handles the heavy lifting. Laravel supports multiple queue drivers (database, Redis, SQS, etc.) and provides a simple syntax to create and dispatch jobs. Jobs are plain PHP classes that implement the ShouldQueue interface and contain a handle method where the job logic resides. Workers listen to the queue and execute jobs, retrying failed attempts based on your configuration.
+Explanation  
+The Laravel service container is a powerful tool for managing class dependencies and performing dependency injection. It resolves objects automatically, allowing you to type‑hint classes in constructors or controller methods without manually instantiating them. By binding interfaces to concrete implementations, you can swap out underlying logic without changing the consuming code. This promotes a clean separation of concerns and makes testing easier through mocking. The container also supports contextual bindings, singleton lifetimes, and automatic injection of primitive values when needed.
 
-Code example with comments:  
+Code Example  
 
-<?php
-namespace App\Jobs;
-
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use App\Mail\WelcomeMail;
-use Mail;
-
-class SendWelcomeEmail implements ShouldQueue
+// A simple interface that defines a contract for sending notifications
+namespace App\Contracts;
+interface Notifier
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    public function send(string $message);
+}
 
-    protected $user;
-
-    // The job receives the user instance when it is dispatched
-    public function __construct($user)
+// A concrete implementation that sends notifications via email
+namespace App\Services;
+use App\Contracts\Notifier;
+class EmailNotifier implements Notifier
+{
+    // The $mailer is injected by Laravel's container automatically
+    public function __construct(\Illuminate\Mail\Mailer $mailer)
     {
-        $this->user = $user;
+        $this->mailer = $mailer;
     }
 
-    // This method is called by the queue worker
-    public function handle()
+    public function send(string $message)
     {
-        // Send the welcome email using Laravel's Mail facade
-        Mail::to($this->user->email)->send(new WelcomeMail($this->user));
+        // Here we would build and send the email
+        $this->mailer->raw($message, function ($mail) {
+            $mail->to('user@example.com')
+                 ->subject('Notification');
+        });
     }
 }
 
-// Dispatching the job from a controller or service
-// This will push the job onto the default queue connection
-$user = User::find(1);
-SendWelcomeEmail::dispatch($user);
+// Register the binding in a service provider
+namespace App\Providers;
+use Illuminate\Support\ServiceProvider;
+use App\Contracts\Notifier;
+use App\Services\EmailNotifier;
+class NotificationServiceProvider extends ServiceProvider
+{
+    public function register()
+    {
+        // Bind the Notifier interface to the EmailNotifier implementation
+        $this->app->bind(Notifier::class, EmailNotifier::class);
+    }
+}
+
+// Using the bound Notifier in a controller via constructor injection
+namespace App\Http\Controllers;
+use App\Contracts\Notifier;
+class MessageController extends Controller
+{
+    protected $notifier;
+
+    // Laravel automatically resolves the EmailNotifier when Notifier is requested
+    public function __construct(Notifier $notifier)
+    {
+        $this->notifier = $notifier;
+    }
+
+    public function store()
+    {
+        // Business logic ...
+
+        // Send a notification without caring about the concrete class
+        $this->notifier->send('A new message has been created.');
+    }
+}
 */
 
 /* MySQL
 Topic: Common Table Expressions (CTEs) and Recursive Queries
 
 Explanation:  
-A Common Table Expression (CTE) is a temporary result set that can be referenced within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs are defined using the WITH clause and improve query readability by allowing you to break complex logic into named subqueries.  
-When the WITH keyword is followed by RECURSIVE, the CTE can reference itself, enabling hierarchical or tree‑structured data processing.  
-Recursive CTEs consist of an anchor member (the base case) and a recursive member that repeatedly joins the CTE to itself until a termination condition is met.  
-They are useful for traversing organizational charts, bill‑of‑materials, or any data with parent‑child relationships without needing procedural code.
+Common Table Expressions allow you to define a temporary result set that can be referenced within a SELECT, INSERT, UPDATE, or DELETE statement.  
+Using the WITH keyword, you can give the CTE a name and specify the query that builds it.  
+When the CTE is marked RECURSIVE, it can refer to itself, enabling hierarchical or tree‑like data retrieval.  
+Recursive CTEs consist of an anchor member (the starting rows) and a recursive member (how to walk the hierarchy).  
+The query stops automatically when the recursive member returns no rows, preventing infinite loops.
 
-Code example (recursive CTE that lists an employee hierarchy):
+Code example with comments:  
+-- Create a sample table to store employees and their managers  
+CREATE TABLE employees (  
+    employee_id INT PRIMARY KEY,  
+    manager_id  INT NULL,        -- NULL for top‑level managers  
+    name        VARCHAR(50) NOT NULL  
+);  
 
-WITH RECURSIVE employee_path (emp_id, emp_name, manager_id, level) AS
-(
-    -- Anchor member: start with top‑level managers (no manager)
-    SELECT emp_id,
-           emp_name,
-           manager_id,
-           1 AS level
-    FROM employees
-    WHERE manager_id IS NULL
+-- Insert sample data representing a simple org chart  
+INSERT INTO employees (employee_id, manager_id, name) VALUES  
+(1, NULL, 'Alice'),        -- CEO  
+(2, 1,    'Bob'),          -- reports to Alice  
+(3, 1,    'Carol'),        -- reports to Alice  
+(4, 2,    'David'),        -- reports to Bob  
+(5, 2,    'Eve'),          -- reports to Bob  
+(6, 3,    'Frank');        -- reports to Carol  
 
-    UNION ALL
-
-    -- Recursive member: join each employee to its manager
-    SELECT e.emp_id,
-           e.emp_name,
-           e.manager_id,
-           ep.level + 1
-    FROM employees e
-    JOIN employee_path ep ON e.manager_id = ep.emp_id
-)
-SELECT emp_id,
-       emp_name,
-       manager_id,
-       level
-FROM employee_path
-ORDER BY level, manager_id;
+-- Recursive CTE to retrieve the full management hierarchy with depth level  
+WITH RECURSIVE emp_tree AS (  
+    -- Anchor member: start with top‑level managers (no manager_id)  
+    SELECT employee_id, manager_id, name, 1 AS level  
+    FROM employees  
+    WHERE manager_id IS NULL  
+  
+    UNION ALL  
+  
+    -- Recursive member: join each employee to their manager found in the previous level  
+    SELECT e.employee_id, e.manager_id, e.name, et.level + 1  
+    FROM employees e  
+    JOIN emp_tree et ON e.manager_id = et.employee_id  
+)  
+SELECT employee_id, manager_id, name, level  
+FROM emp_tree  
+ORDER BY level, employee_id;   -- Result shows each employee with their depth in the hierarchy.
 */
 
 /* JavaScript
-Topic: JavaScript Closures
+Topic: Closures and the Module Pattern  
 
 Explanation:  
-A closure is created when an inner function retains access to variables from its outer (enclosing) function even after that outer function has finished executing. This allows the inner function to remember the lexical environment in which it was defined, enabling data encapsulation and private state. Closures are fundamental for patterns such as function factories, module patterns, and callbacks. Because the captured variables live on the heap rather than the stack, they persist for the lifetime of any references to the inner function. Understanding closures helps avoid common pitfalls like unintended shared state in loops.
+A closure is a function that retains access to its lexical scope even after the outer function has finished executing. This feature lets you create private variables that cannot be accessed directly from outside the closure. The module pattern leverages closures to encapsulate implementation details while exposing a public API. By wrapping code in an immediately‑invoked function expression (IIFE), you create a self‑contained module with hidden state. This approach is useful for organizing code, preventing global namespace pollution, and mimicking private members in JavaScript.  
 
 Code example with comments:  
-function makeCounter(initialValue) {  
-    let count = initialValue;            // count is private to the closure  
-    return function() {                 // the inner function forms the closure  
-        count += 1;                      // it can read and modify count  
-        return count;                   // returns the updated value  
-    };  
-}  
 
-const counterA = makeCounter(0); // creates a new closure with its own count  
-console.log(counterA()); // 1  
-console.log(counterA()); // 2  
+// Define a module using an IIFE that creates a private counter variable
+const Counter = (function () {
+    // Private variable, not accessible from outside the IIFE
+    let count = 0;
 
-const counterB = makeCounter(10); // a separate closure, independent state  
-console.log(counterB()); // 11  
-console.log(counterA()); // 3 – counterA’s count continues where it left off  
+    // Expose an object with methods that can manipulate the private variable
+    return {
+        // Increments the private count and logs the new value
+        increment: function () {
+            count++;
+            console.log('Current count:', count);
+        },
+        // Resets the private count to zero and logs the reset action
+        reset: function () {
+            count = 0;
+            console.log('Counter has been reset');
+        },
+        // Returns the current count without modifying it
+        getValue: function () {
+            return count;
+        }
+    };
+})();  
+
+// Using the public API of the Counter module
+Counter.increment();   // Current count: 1
+Counter.increment();   // Current count: 2
+console.log('Value is', Counter.getValue()); // Value is 2
+Counter.reset();       // Counter has been reset
+console.log('Value after reset', Counter.getValue()); // Value after reset 0
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering for Text Classification with Large Language Models  
+Topic: Few‑Shot Prompt Engineering with the OpenAI Completion API
 
 Explanation:  
-1. Few‑shot prompting supplies the model with a small number of labeled examples directly in the prompt, guiding it to infer the classification task without fine‑tuning.  
-2. This technique leverages the model’s in‑context learning ability, making it fast to prototype new classifiers.  
-3. The prompt typically contains a clear instruction, several example input‑output pairs, and then the new query.  
-4. Selecting diverse, representative examples improves consistency and reduces bias.  
-5. The approach works with any LLM that supports completion or chat endpoints, such as OpenAI’s gpt‑4o.  
+Few‑shot prompting supplies the model with a small number of example input‑output pairs before the actual query, guiding it toward the desired pattern.  
+It works well for tasks like text classification, data extraction, or style transfer without fine‑tuning.  
+By carefully selecting representative examples, you can improve consistency and reduce hallucinations.  
+The prompt is constructed as a single string where each example is separated by newline characters, ending with the new query.  
+This technique is language‑agnostic and can be used with any model that accepts a plain‑text prompt.
 
-Code example (Python, OpenAI API)  
+Code example (Python, using openai library):
+import os
+import openai
 
-import os  
-import openai  
+# Set your API key (ensure it is stored securely, e.g., as an environment variable)
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Load your API key from an environment variable  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Define a few‑shot prompt for sentiment classification
+examples = [
+    "Review: I loved the movie, it was fantastic!\nSentiment: Positive",
+    "Review: The food was terrible and the service was slow.\nSentiment: Negative",
+    "Review: It was an okay experience, nothing special.\nSentiment: Neutral"
+]
 
-def classify_text(text):  
-    # Define a few‑shot prompt with two example classifications  
-    prompt = (  
-        "Classify the sentiment of the following sentences as Positive, Negative, or Neutral.\n\n"  
-        "Sentence: I loved the new phone I bought today!\n"  
-        "Sentiment: Positive\n\n"  
-        "Sentence: The movie was okay, not great but not terrible.\n"  
-        "Sentiment: Neutral\n\n"  
-        f"Sentence: {text}\n"  
-        "Sentiment:"  
-    )  
+# The new input we want the model to classify
+new_review = "Review: The plot was confusing, but the visuals were stunning.\nSentiment:"
 
-    # Call the chat completion endpoint using the prompt as a system message  
-    response = openai.ChatCompletion.create(  
-        model="gpt-4o-mini",  
-        messages=[{"role": "user", "content": prompt}],  
-        temperature=0.0,            # deterministic output for classification  
-        max_tokens=10               # we only need the label word  
-    )  
+# Combine examples and the new query into one prompt
+prompt = "\n\n".join(examples) + "\n\n" + new_review
 
-    # Extract and return the model’s answer, stripping whitespace  
-    sentiment = response.choices[0].message.content.strip()  
-    return sentiment  
+# Call the Completion API with a deterministic setting (temperature=0)
+response = openai.Completion.create(
+    engine="text-davinci-003",
+    prompt=prompt,
+    max_tokens=5,
+    temperature=0,
+    top_p=1,
+    n=1,
+    stop=None
+)
 
-# Example usage  
-sample = "The service was painfully slow and the staff were rude."  
-print("Input:", sample)  
-print("Predicted Sentiment:", classify_text(sample))  
+# Extract and print the model's answer
+sentiment = response.choices[0].text.strip()
+print(f"Predicted sentiment: {sentiment}")
 */
 
