@@ -1,235 +1,201 @@
 <?php
-// 2026-09-06 06:19:12
+// 2026-09-07 06:25:29
 
 /* PHP
-Topic: Prepared Statements with PDO (PHP Data Objects)
+Topic: PDO Prepared Statements for Secure Database Access  
 
-Explanation:
-Prepared statements allow you to separate SQL code from data values, which prevents SQL injection attacks.  
-PDO provides a uniform interface for interacting with many different database systems.  
-You first prepare the SQL query with placeholders, then bind the actual values before execution.  
-This approach also enables the database engine to reuse the compiled query plan for better performance.  
-If an error occurs, PDO can throw exceptions, making debugging easier.
+Explanation:  
+- Prepared statements separate SQL code from data, preventing SQL injection attacks.  
+- The PDO (PHP Data Objects) extension provides a consistent interface for many database systems.  
+- Placeholders in the SQL query are bound to actual values at execution time.  
+- Binding can be done by position (question marks) or by named parameters.  
+- Using prepared statements also improves performance when the same query is executed multiple times with different data.  
 
-Code example with comments:
+Code example (with comments):
+
 <?php
-// Create a new PDO instance (replace DSN, username, and password with your own values)
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$username = 'dbuser';
-$password = 'dbpass';
+// Create a new PDO instance connecting to a MySQL database
+$dsn = 'mysql:host=localhost;dbname=sample_db;charset=utf8mb4';
+$username = 'db_user';
+$password = 'db_pass';
 $options = [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch results as associative arrays
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch rows as associative arrays
 ];
 $pdo = new PDO($dsn, $username, $password, $options);
 
-// Prepare an INSERT statement with named placeholders
-$sql = "INSERT INTO users (email, password_hash, created_at) VALUES (:email, :hash, :created)";
+// Define an SQL query with named placeholders
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)';
+
+// Prepare the statement once
 $stmt = $pdo->prepare($sql);
 
-// Bind values to the placeholders
-$email = 'alice@example.com';
-$hash = password_hash('secret123', PASSWORD_DEFAULT);
-$created = date('Y-m-d H:i:s');
-$stmt->bindParam(':email', $email);
-$stmt->bindParam(':hash', $hash);
-$stmt->bindParam(':created', $created);
+// Sample data to insert
+$data = [
+    ':username'   => 'alice',
+    ':email'      => 'alice@example.com',
+    ':created_at' => date('Y-m-d H:i:s')
+];
 
-// Execute the statement
-$stmt->execute();
+// Bind the values and execute the statement
+$stmt->execute($data);
 
-// Optionally get the ID of the newly inserted row
+// Optionally, get the ID of the newly inserted row
 $newUserId = $pdo->lastInsertId();
-echo "New user inserted with ID: " . $newUserId;
+echo "New user inserted with ID: $newUserId";
 ?>
 */
 
 /* Laravel
-Laravel Service Container and Automatic Dependency Injection
+Topic: Custom Validation Rules in Laravel
 
-The service container is the core of Laravel’s inversion of control system, allowing classes to be resolved automatically without manual instantiation. When a class type‑hint is present in a controller’s constructor, Laravel injects the appropriate instance from the container. This promotes loose coupling and makes testing easier through mock injection. Bindings can be defined in service providers to control lifecycle (singleton, transient, etc.). The container also resolves dependencies of dependencies, building full object graphs on demand.
+Explanation:  
+Laravel’s validator allows you to encapsulate complex validation logic in a reusable class. By implementing the Rule interface you can define a rule that can be injected wherever validation occurs. This keeps your FormRequest or controller clean and makes the rule testable in isolation. Custom rules are especially useful for checks that involve external services, database lookups, or multi‑field dependencies. Once registered, the rule can be used just like any built‑in validation rule.
 
+Code example (app/Rules/ValidPhoneNumber.php):  
 <?php
-namespace App\Http\Controllers;
+namespace App\Rules;
 
-use App\Services\ReportService;
-use Illuminate\Http\Request;
+use Illuminate\Contracts\Validation\Rule;
 
-class ReportController extends Controller
+class ValidPhoneNumber implements Rule
 {
-    // ReportService will be injected automatically by the container
-    public function __construct(ReportService $reportService)
+    // You may inject services via the constructor if needed
+    public function __construct()
     {
-        $this->reportService = $reportService;
+        // initialization code here
     }
 
-    // Action that utilizes the injected service
-    public function index(Request $request)
+    // Determine if the validation rule passes.
+    public function passes($attribute, $value)
     {
-        // Pass request data as filters to the service method
-        $reports = $this->reportService->getReports($request->all());
+        // Example: allow only US phone numbers in the format (123) 456‑7890
+        return preg_match('/^\(\d{3}\) \d{3}\-\d{4}$/', $value);
+    }
 
-        // Return JSON response
-        return response()->json($reports);
+    // Return the validation error message.
+    public function message()
+    {
+        return 'The :attribute must be a valid US phone number (e.g., (123) 456-7890).';
     }
 }
+?>
 
-namespace App\Services;
+Usage in a Form Request (app/Http/Requests/StoreContactRequest.php):  
+<?php
+namespace App\Http\Requests;
 
-class ReportService
+use Illuminate\Foundation\Http\FormRequest;
+use App\Rules\ValidPhoneNumber;
+
+class StoreContactRequest extends FormRequest
 {
-    // Example method that could query models or external APIs
-    public function getReports(array $filters)
+    public function authorize()
     {
-        // For demonstration, return a static array
+        return true; // adjust authorization as needed
+    }
+
+    public function rules()
+    {
         return [
-            ['id' => 1, 'title' => 'Monthly Sales'],
-            ['id' => 2, 'title' => 'User Activity'],
+            'name'  => 'required|string|max:255',
+            'email' => 'required|email',
+            // Apply the custom rule to the phone field
+            'phone' => ['required', new ValidPhoneNumber()],
         ];
     }
 }
-
-namespace App\Providers;
-
-use Illuminate\Support\ServiceProvider;
-use App\Services\ReportService;
-
-class AppServiceProvider extends ServiceProvider
-{
-    public function register()
-    {
-        // Bind ReportService as a singleton in the container
-        $this->app->singleton(ReportService::class, function ($app) {
-            return new ReportService();
-        });
-    }
-}
+?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) and Recursive Queries
+Topic: MySQL Transactions and ACID Properties  
 
-Explanation:
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs are defined using the WITH clause and improve readability by allowing you to break complex queries into logical building blocks.  
-Recursive CTEs enable hierarchical or graph traversals, such as retrieving an organizational chart or processing a bill‑of‑materials tree.  
-The recursion is controlled by an anchor member (the base case) and a recursive member that references the CTE itself.  
-MySQL 8.0+ fully supports both non‑recursive and recursive CTEs, making it possible to write elegant queries without temporary tables.
+Explanation:  
+- A transaction groups one or more SQL statements into a single unit of work that either fully succeeds or fully fails.  
+- MySQL guarantees the ACID properties: Atomicity, Consistency, Isolation, and Durability, ensuring reliable data changes.  
+- Transactions are started with START TRANSACTION (or BEGIN) and concluded with COMMIT to make changes permanent or ROLLBACK to undo them.  
+- The default isolation level is REPEATABLE READ, which prevents non‑repeatable reads but allows phantom rows unless stricter levels are set.  
+- Proper use of transactions avoids partial updates, race conditions, and maintains data integrity in multi‑user environments.  
 
-Code example (employee hierarchy using a recursive CTE):
+Code example (with inline comments):  
 
--- Define a CTE named emp_tree that starts with the top‑level manager (manager_id IS NULL)
--- and recursively adds direct reports until the hierarchy is fully expanded.
-WITH RECURSIVE emp_tree AS (
-    -- Anchor member: select the root employee(s)
-    SELECT 
-        employee_id,
-        employee_name,
-        manager_id,
-        1 AS level
-    FROM employees
-    WHERE manager_id IS NULL
-
-    UNION ALL
-
-    -- Recursive member: join employees to the previously built tree
-    SELECT 
-        e.employee_id,
-        e.employee_name,
-        e.manager_id,
-        et.level + 1 AS level
-    FROM employees e
-    INNER JOIN emp_tree et ON e.manager_id = et.employee_id
-)
--- Final query: retrieve the entire hierarchy ordered by level and employee name
-SELECT 
-    employee_id,
-    employee_name,
-    manager_id,
-    level
-FROM emp_tree
-ORDER BY level, employee_name;
+START TRANSACTION;                     -- Begin a new transaction  
+UPDATE accounts SET balance = balance - 100 WHERE account_id = 1;   -- Debit account 1  
+UPDATE accounts SET balance = balance + 100 WHERE account_id = 2;   -- Credit account 2  
+-- Check that both updates succeeded and balances remain non‑negative  
+SELECT balance FROM accounts WHERE account_id IN (1,2);  
+-- If any condition fails, undo the changes  
+ROLLBACK;                              -- Undo all statements in the transaction  
+-- Otherwise, make the changes permanent  
+COMMIT;                                -- Commit the transaction and release locks  
 */
 
 /* JavaScript
-Topic: Async/Await for handling asynchronous operations  
+Topic: Closures in JavaScript
 
 Explanation:  
-Async/await is syntactic sugar built on top of Promises that lets you write asynchronous code that looks and behaves like synchronous code.  
-An async function always returns a Promise, and the await keyword pauses execution until the Promise settles.  
-Using await eliminates the need for chained .then() calls, making error handling with try/catch straightforward.  
-It improves readability, especially when dealing with multiple sequential asynchronous steps.  
-Be careful to only use await inside functions declared with the async keyword; otherwise a syntax error occurs.  
+A closure is a function that retains access to its lexical scope even when that function is executed outside of its original context.  
+Closures enable data encapsulation, allowing private variables that cannot be accessed directly from the outside.  
+They are created each time a function is defined, capturing the surrounding variables at that moment.  
+Common uses include factories, module patterns, and maintaining state in asynchronous callbacks.  
+Understanding closures is essential for writing robust, memory‑efficient JavaScript code.
 
-Code example:  
-async function getUserData(userId) {  
-    // Fetch user info from the API; await pauses until the fetch Promise resolves  
-    const response = await fetch(`https://api.example.com/users/${userId}`);  
-    // If the response is not OK, throw an error to be caught by the outer try/catch  
-    if (!response.ok) {  
-        throw new Error('Network response was not ok');  
-    }  
-    // Parse the JSON body; await ensures we wait for the parsing to complete  
-    const userData = await response.json();  
-    return userData; // This value becomes the resolved value of the Promise returned by the async function  
-}  
+Code example with comments:
+function createCounter(initialValue) {                 // outer function receives an initial value
+    let count = initialValue;                         // private variable, not exposed outside
+    return function increment(step = 1) {            // inner function forms a closure over 'count'
+        count += step;                               // modifies the captured variable
+        console.log('Current count:', count);       // can use the private state each call
+        return count;                                // returns the updated value
+    };
+}
 
-// Using the async function with proper error handling  
-(async () => {  
-    try {  
-        const data = await getUserData(42);  
-        console.log('User data:', data);  
-    } catch (error) {  
-        console.error('Failed to fetch user data:', error);  
-    }  
-})();
+const counterA = createCounter(10);                    // counterA has its own private 'count'
+counterA();                                            // prints "Current count: 11"
+counterA(5);                                           // prints "Current count: 16"
+
+const counterB = createCounter(0);                     // separate closure, independent state
+counterB(2);                                           // prints "Current count: 2"
+counterB();                                            // prints "Current count: 3"
+counterA();                                            // still prints "Current count: 17" – unaffected by counterB
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
+Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
 
 Explanation:  
-Few‑shot prompting supplies a small number of example interactions inside the prompt to guide the model’s behavior without fine‑tuning. By formatting the prompt as a series of user‑assistant turns, the model infers the desired pattern and can generalize to new inputs. This technique works well for tasks like text classification, data extraction, or style transfer where a full training pipeline would be overkill. The key is to keep examples clear, consistent, and relevant to the target task. Adjusting the system message and temperature further refines the model’s adherence to the demonstrated style.  
+Few‑shot prompting supplies the model with a handful of example input‑output pairs before the actual query, guiding its behavior without any fine‑tuning. By embedding these demonstrations in the message list, the model can infer the desired pattern—such as translation style, tone, or format—and apply it to new inputs. This technique works well for tasks that have clear, repeatable structure and can dramatically improve consistency. It is especially useful when building lightweight AI assistants or utilities that must adapt to user‑provided examples on the fly. The approach is model‑agnostic: any chat‑capable model (e.g., gpt‑3.5‑turbo, gpt‑4) can consume the same message format.
 
-Code example (Python, using the OpenAI library):  
+Code example (Python, using the OpenAI API):  
 
-import os  
 import openai  
 
-# Load your API key from an environment variable or directly assign it  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Insert your OpenAI API key here  
+openai.api_key = "YOUR_API_KEY"  
 
-def classify_sentiment(user_input):  
-    # Define the system message that sets the overall role of the assistant  
-    system_msg = {"role": "system", "content": "You are a helpful assistant that classifies the sentiment of short sentences as Positive, Negative, or Neutral."}  
+# Define a few demonstration pairs for English‑to‑French translation  
+examples = [  
+    {"role": "user", "content": "Translate to French: Hello, how are you?"},  
+    {"role": "assistant", "content": "Bonjour, comment ça va?"},  
+    {"role": "user", "content": "Translate to French: I love programming."},  
+    {"role": "assistant", "content": "J'adore la programmation."}  
+]  
 
-    # Provide a few example user‑assistant pairs (few‑shot)  
-    examples = [  
-        {"role": "user", "content": "I love the new design of the app!"},  
-        {"role": "assistant", "content": "Positive"},  
-        {"role": "user", "content": "The update broke my workflow."},  
-        {"role": "assistant", "content": "Negative"},  
-        {"role": "user", "content": "It works as expected."},  
-        {"role": "assistant", "content": "Neutral"}  
-    ]  
+# New user request that follows the same pattern  
+new_query = {"role": "user", "content": "Translate to French: AI is changing the world."}  
 
-    # Append the actual user query at the end of the prompt sequence  
-    user_msg = {"role": "user", "content": user_input}  
+# Combine the examples with the new query into a single message list  
+messages = examples + [new_query]  
 
-    # Call the chat completion endpoint with the assembled message list  
-    response = openai.ChatCompletion.create(  
-        model="gpt-4o-mini",          # choose a suitable model  
-        messages=[system_msg] + examples + [user_msg],  
-        temperature=0.0               # low temperature for deterministic output  
-    )  
+# Call the chat completion endpoint, keeping temperature low for deterministic output  
+response = openai.ChatCompletion.create(  
+    model="gpt-3.5-turbo",   # or "gpt-4" for higher quality  
+    messages=messages,  
+    temperature=0.2  
+)  
 
-    # Extract and return the assistant’s reply (the sentiment label)  
-    sentiment = response.choices[0].message.content.strip()  
-    return sentiment  
-
-# Example usage  
-if __name__ == "__main__":  
-    text = "The customer service was surprisingly quick and friendly."  
-    print("Sentiment:", classify_sentiment(text))  
+# Extract and print the assistant’s translation  
+print(response["choices"][0]["message"]["content"])  
 */
 
