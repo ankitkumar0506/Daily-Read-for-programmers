@@ -1,236 +1,205 @@
 <?php
-// 2026-09-08 06:15:48
+// 2026-09-09 06:22:38
 
 /* PHP
-Topic: PDO Prepared Statements for Secure Database Access
+Topic: Using PDO (PHP Data Objects) for Secure Database Access
 
 Explanation:
-- PDO (PHP Data Objects) provides a consistent interface for accessing different databases.
-- Prepared statements separate SQL code from data, preventing SQL injection attacks.
-- Parameters are bound to placeholders, allowing the driver to handle proper escaping.
-- PDO supports named or positional placeholders, making queries more readable.
-- Using PDO also enables easier error handling and transaction management.
+PDO provides a consistent interface for accessing many different databases from PHP.  
+It supports prepared statements, which help prevent SQL injection attacks by separating SQL code from data.  
+With PDO you can easily bind parameters, fetch results in various formats, and handle errors via exceptions.  
+The connection can be configured with options such as persistent connections and error mode.  
+PDO also allows you to switch database drivers (MySQL, PostgreSQL, SQLite, etc.) with minimal code changes.
 
-Code example with comments:
+Code example (MySQL connection, inserting a record, and fetching data):
 
 <?php
-// Connect to a MySQL database using PDO
-$dsn = 'mysql:host=localhost;dbname=example_db;charset=utf8mb4';
-$username = 'db_user';
-$password = 'db_pass';
+// Database connection parameters
+$host = 'localhost';
+$db   = 'testdb';
+$user = 'dbuser';
+$pass = 'dbpassword';
+$charset = 'utf8mb4';
+
+// Data Source Name (DSN) tells PDO which driver to use and how to connect
+$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
+
+// PDO options for better error handling and performance
+$options = [
+    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,       // Return rows as associative arrays
+    PDO::ATTR_EMULATE_PREPARES   => false,                  // Use native prepared statements
+];
 
 try {
-    $pdo = new PDO($dsn, $username, $password);
-    // Set error mode to exceptions for better error handling
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    // Create a new PDO instance (establishes the connection)
+    $pdo = new PDO($dsn, $user, $pass, $options);
 } catch (PDOException $e) {
-    // Handle connection errors
+    // If connection fails, display the error message and stop execution
     die('Connection failed: ' . $e->getMessage());
 }
 
-// Prepare an INSERT statement with named placeholders
-$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())";
-$stmt = $pdo->prepare($sql);
+// ----- INSERT USING A PREPARED STATEMENT -----
+$sqlInsert = "INSERT INTO users (username, email) VALUES (:username, :email)";
+$stmtInsert = $pdo->prepare($sqlInsert);          // Prepare the statement once
+$stmtInsert->execute([
+    ':username' => 'alice',
+    ':email'    => 'alice@example.com',
+]); // Execute with bound values; PDO handles quoting automatically
 
-// Bind values to the placeholders
-$stmt->bindParam(':username', $userName, PDO::PARAM_STR);
-$stmt->bindParam(':email', $userEmail, PDO::PARAM_STR);
+// ----- SELECT USING A PREPARED STATEMENT -----
+$sqlSelect = "SELECT id, username, email FROM users WHERE email = :email";
+$stmtSelect = $pdo->prepare($sqlSelect);
+$stmtSelect->execute([':email' => 'alice@example.com']);
 
-// Sample data
-$userName  = 'johndoe';
-$userEmail = 'johndoe@example.com';
+// Fetch all matching rows (in this case likely just one)
+$users = $stmtSelect->fetchAll();
 
-// Execute the prepared statement
-try {
-    $stmt->execute();
-    echo "New user inserted with ID: " . $pdo->lastInsertId();
-} catch (PDOException $e) {
-    // Handle query errors
-    echo "Insert failed: " . $e->getMessage();
+foreach ($users as $user) {
+    echo "ID: {$user['id']}, Username: {$user['username']}, Email: {$user['email']}\n";
 }
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container – Automatic Dependency Injection
+Topic: Laravel Eloquent Mutators & Accessors
 
 Explanation:  
-The Laravel service container is the core of the framework’s inversion of control (IoC) system. It resolves class dependencies automatically, allowing you to type‑hint objects in constructors or controller methods without manually creating them. By binding interfaces to concrete implementations, you can swap out underlying classes without changing the consuming code. The container also supports contextual bindings, singleton bindings, and resolves primitive values via the service provider’s register method. Leveraging the container leads to more testable, loosely coupled, and maintainable code.
+Mutators allow you to modify attribute values before they are saved to the database, while accessors let you transform values when they are retrieved from a model. This is useful for formatting data such as dates, JSON, or encrypting sensitive fields automatically. Mutators and accessors are defined as methods on the Eloquent model using the setAttributeNameAttribute and getAttributeNameAttribute naming conventions. They keep data handling logic inside the model, promoting clean controllers and services. Laravel automatically calls these methods whenever you get or set the associated attribute.
 
-Code example (app/Providers/AppServiceProvider.php):
+Code Example (User model with password mutator and full_name accessor):
+
 <?php
-namespace App\Providers;
+namespace App\Models;
 
-use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;
-use App\Services\StripePaymentGateway;
-use App\Services\PayPalPaymentGateway;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
 
-class AppServiceProvider extends ServiceProvider
+class User extends Authenticatable
 {
-    // Register bindings in the container
-    public function register()
+    use Notifiable;
+
+    // Fillable attributes
+    protected $fillable = ['first_name', 'last_name', 'email', 'password'];
+
+    // Mutator: hash password before saving
+    public function setPasswordAttribute($value)
     {
-        // Bind the PaymentGateway interface to a concrete implementation
-        $this->app->bind(PaymentGateway::class, function ($app) {
-            // Choose implementation based on config value
-            return config('services.payment') === 'paypal'
-                ? new PayPalPaymentGateway()
-                : new StripePaymentGateway();
-        });
+        // Only hash if the value is not already hashed
+        $this->attributes['password'] = \Hash::needsRehash($value) ? \Hash::make($value) : $value;
     }
 
-    public function boot()
+    // Accessor: combine first and last name into full_name
+    public function getFullNameAttribute()
     {
-        // No boot logic needed for this example
-    }
-}
-?>
-
-Code example (app/Http/Controllers/OrderController.php):
-<?php
-namespace App\Http\Controllers;
-
-use App\Contracts\PaymentGateway;
-use Illuminate\Http\Request;
-
-class OrderController extends Controller
-{
-    protected $gateway;
-
-    // The service container injects the concrete PaymentGateway automatically
-    public function __construct(PaymentGateway $gateway)
-    {
-        $this->gateway = $gateway;
+        return trim($this->first_name . ' ' . $this->last_name);
     }
 
-    public function store(Request $request)
-    {
-        $orderData = $request->all();
-
-        // Use the injected gateway to process payment
-        $result = $this->gateway->charge($orderData['amount'], $orderData['currency']);
-
-        // Continue with order creation logic...
-        return response()->json(['status' => $result ? 'paid' : 'failed']);
-    }
+    // Example usage in a controller:
+    // $user = User::create(['first_name' => 'Jane', 'last_name' => 'Doe', 'email' => 'jane@example.com', 'password' => 'secret']);
+    // echo $user->full_name; // Outputs "Jane Doe"
+    // $user->password = 'newsecret'; // Mutator automatically hashes the new password
 }
 ?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) and Recursive Queries
+Topic: Common Table Expressions (CTE) and Recursive Queries
 
-Explanation:
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It is defined using the WITH clause and can improve readability by breaking complex queries into logical parts. CTEs can be recursive, allowing you to query hierarchical data such as organizational charts or bill‑of‑materials. The recursive CTE consists of an anchor member (the base case) and a recursive member that references the CTE itself. Recursive CTEs continue to execute until the recursive member returns no rows, at which point the final result set is produced.
+Explanation:  
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It is defined using the WITH clause and improves readability by allowing you to break complex queries into logical building blocks. Recursive CTEs enable hierarchical data traversal, such as organization charts or folder structures, by repeatedly applying a query to its own output. They consist of an anchor member (base case) and a recursive member that references the CTE itself. Recursive CTEs must include a termination condition to avoid infinite loops.
 
 Code example (MySQL 8.0+):
-WITH RECURSIVE OrgChart AS (
-    -- Anchor member: select the top‑level manager(s)
-    SELECT employee_id,
-           manager_id,
-           employee_name,
-           1 AS level
+
+-- Define a recursive CTE to list all sub‑ordinates of a manager
+WITH RECURSIVE employee_hierarchy AS (
+    -- Anchor member: start with the manager whose id is 1
+    SELECT employee_id, manager_id, employee_name, 1 AS level
     FROM employees
-    WHERE manager_id IS NULL
+    WHERE manager_id = 1
 
     UNION ALL
 
-    -- Recursive member: select employees reporting to the previous level
-    SELECT e.employee_id,
-           e.manager_id,
-           e.employee_name,
-           oc.level + 1 AS level
+    -- Recursive member: find employees whose manager is in the previous level
+    SELECT e.employee_id, e.manager_id, e.employee_name, eh.level + 1
     FROM employees e
-    INNER JOIN OrgChart oc ON e.manager_id = oc.employee_id
+    INNER JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id
 )
-SELECT employee_id,
-       manager_id,
-       employee_name,
-       level
-FROM OrgChart
-ORDER BY level, manager_id; 
-
--- This query returns the entire hierarchy of employees, indicating each employee’s depth (level) in the organization.
+SELECT employee_id, manager_id, employee_name, level
+FROM employee_hierarchy
+ORDER BY level, employee_id;
 */
 
 /* JavaScript
 Topic: Closures in JavaScript  
 
 Explanation:  
-- A closure is created when an inner function accesses variables from its outer (enclosing) function after the outer function has finished executing.  
-- The inner function retains a reference to the outer scope's variables, forming a persistent lexical environment.  
-- Closures enable data encapsulation, allowing private state that cannot be accessed directly from the outside.  
-- They are frequently used for factories, module patterns, and maintaining state in asynchronous callbacks.  
-- Understanding closures helps avoid common pitfalls such as unintended variable sharing in loops.  
+A closure is created when an inner function accesses variables from its outer (enclosing) function after the outer function has finished executing.  
+The inner function retains a reference to the outer scope’s variables, forming a persistent lexical environment.  
+Closures enable data encapsulation, allowing private state that cannot be accessed directly from the outside.  
+They are frequently used for factories, module patterns, and event handlers that need to remember context.  
+Understanding closures is essential for managing memory and avoiding common bugs like unintentionally shared state.  
 
-Code example with comments:  
-function createCounter(initialValue) {               // outer function defines a private variable  
-    let count = initialValue;                       // this variable will be captured by the closure  
+Code example:  
+function makeCounter(initial) {  
+    let count = initial; // variable in the outer function’s scope  
 
-    return function increment(step = 1) {           // inner function forms a closure over 'count'  
-        count += step;                              // modifies the private 'count' each call  
-        return count;                               // returns the updated value  
-    };                                              // the returned function keeps access to 'count'  
+    return function() { // inner function forms a closure over count  
+        count += 1;  
+        console.log('Current count:', count);  
+    };  
+}  
 
-}                                                   // end of outer function  
+const counterA = makeCounter(0); // creates a separate closure  
+const counterB = makeCounter(10); // another independent closure  
 
-const counterA = createCounter(0);                  // each call creates a separate closure  
-console.log(counterA()); // 1  
-console.log(counterA(5)); // 6  
-
-const counterB = createCounter(10);                 // independent private state  
-console.log(counterB()); // 11  
-console.log(counterB()); // 12   (counterA's count remains unchanged)
+counterA(); // Output: Current count: 1  
+counterA(); // Output: Current count: 2  
+counterB(); // Output: Current count: 11  
+counterB(); // Output: Current count: 12  
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API
+Topic: Prompt Engineering for Few‑Shot Learning with the OpenAI API  
 
 Explanation:  
-Few‑shot prompting supplies the model with a handful of example input‑output pairs so it can infer the desired pattern without fine‑tuning. By embedding these demonstrations directly in the prompt, you guide the model to produce consistent, task‑specific responses. This technique works well for classification, transformation, or generation tasks where labeled data is scarce. The examples should be clear, concise, and formatted uniformly to reduce ambiguity. Adjust the temperature and max_tokens parameters to balance creativity and determinism for the given use case.
+Few‑shot prompting lets a language model learn a new task from just a handful of examples embedded in the prompt. By carefully selecting example pairs and formatting them consistently, you guide the model to infer the desired pattern without fine‑tuning. The approach works well for classification, transformation, or extraction tasks where large labeled datasets are unavailable. Prompt length is limited by the model’s token window, so you must balance the number of examples against the input text. Using clear delimiters and explicit instructions reduces ambiguity and improves reliability across runs.  
 
-Code example (Python, using the openai library):
+Code example (Python, using the openai library):  
 
-import openai
+import os  
+import openai  
 
-# Replace with your actual API key
-openai.api_key = "sk-YOUR_API_KEY"
+# Set your API key – replace with your own or use environment variable  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Define a few‑shot prompt for converting informal sentences to formal language
-few_shot_prompt = """Convert the following informal sentences to formal English.
+def classify_sentiment(text):  
+    # Construct a few‑shot prompt with two labeled examples  
+    prompt = (  
+        "Classify the sentiment of the following sentences as Positive, Negative, or Neutral.\n\n"  
+        "Sentence: I love the new design of the app.\n"  
+        "Sentiment: Positive\n\n"  
+        "Sentence: The update crashed my phone.\n"  
+        "Sentiment: Negative\n\n"  
+        f"Sentence: {text}\n"  
+        "Sentiment:"  
+    )  
 
-Informal: Hey, can you send me the report ASAP?
-Formal: Could you please send me the report as soon as possible?
+    response = openai.Completion.create(  
+        model="text-davinci-003",   # or any other GPT‑3.5/4 model that supports completions  
+        prompt=prompt,  
+        max_tokens=1,               # we only need the single-word label  
+        temperature=0.0,           # deterministic output for classification  
+        stop=["\n"]                 # stop at end of line to avoid extra text  
+    )  
 
-Informal: Got the files, thanks!
-Formal: I have received the files; thank you.
+    # Extract the label from the model's reply  
+    sentiment = response.choices[0].text.strip()  
+    return sentiment  
 
-Informal: Let’s meet up tomorrow.
-Formal: Let us meet tomorrow.
-
-Informal: {user_input}
-Formal:"""
-
-def formalize(text):
-    # Insert the user’s informal sentence into the prompt
-    prompt = few_shot_prompt.format(user_input=text)
-
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",            # lightweight model for fast inference
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,                # deterministic output for formal style
-        max_tokens=60,                  # enough space for the formal sentence
-        n=1
-    )
-    # Extract the model’s reply (the formal sentence)
-    return response.choices[0].message.content.strip()
-
-# Example usage
-informal_sentence = "Can you grab coffee later?"
-print(formalize(informal_sentence))
-
-# Expected output:
-# "Would you be available to have coffee later?"
+# Example usage  
+sample = "The customer service was okay, not great but not terrible."  
+print(f"Input: {sample}")  
+print("Predicted sentiment:", classify_sentiment(sample))  
 */
 
