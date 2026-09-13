@@ -1,242 +1,212 @@
 <?php
-// 2026-09-12 06:09:34
+// 2026-09-13 06:31:48
 
 /* PHP
-Topic: Using Prepared Statements with PDO for Secure Database Queries
+Topic: PHP Generators (Yield)
 
 Explanation:
-Prepared statements separate SQL logic from data, preventing SQL injection attacks.  
-PDO (PHP Data Objects) provides a uniform interface for interacting with many database systems.  
-You first prepare the SQL query with placeholders, then bind values and execute.  
-This approach also improves performance when executing the same query multiple times.  
-Error handling can be managed with exceptions to catch any database issues.
+- Generators allow you to create iterators without building an entire array in memory.  
+- They are defined using a function that contains the `yield` keyword to produce values one at a time.  
+- Each call to `next()` on the generator resumes execution from the last `yield` point.  
+- This approach is especially useful for processing large data sets or streaming data.  
+- Generators reduce memory usage and can improve performance compared to returning full collections.  
 
-Code example (PHP):
+Code Example (with inline comments):
 <?php
-// Enable exceptions for PDO errors
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-];
+// Define a generator function that yields numbers from 1 to $limit
+function numberSequence(int $limit): Generator {
+    for ($i = 1; $i <= $limit; $i++) {
+        // Yield the current number and pause execution
+        yield $i;
+    }
+}
 
-try {
-    // Create a new PDO instance
-    $pdo = new PDO($dsn, 'username', 'password', $options);
-    
-    // Prepare an INSERT statement with named placeholders
-    $stmt = $pdo->prepare(
-        'INSERT INTO users (email, password_hash, created_at) VALUES (:email, :pwd, NOW())'
-    );
-    
-    // Sample data to insert
-    $email = 'user@example.com';
-    $password = 'SecretPass123';
-    // Hash the password securely
-    $hash = password_hash($password, PASSWORD_DEFAULT);
-    
-    // Bind values to the placeholders and execute the statement
-    $stmt->execute([
-        ':email' => $email,
-        ':pwd'   => $hash,
-    ]);
-    
-    echo "User inserted successfully.";
-} catch (PDOException $e) {
-    // Handle any errors that occur during the connection or query
-    echo 'Database error: ' . $e->getMessage();
+// Create a generator for numbers 1 through 5
+$numbers = numberSequence(5);
+
+// Iterate over the generator; each iteration retrieves the next yielded value
+foreach ($numbers as $num) {
+    // Output the current number
+    echo "Number: $num\n";
 }
 ?>
 */
 
 /* Laravel
-Topic: Laravel Queues
+Topic: Laravel Service Container & Dependency Injection  
 
 Explanation:  
-Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing uploads, or generating reports to a background process.  
-Jobs are placed onto a queue driver (database, Redis, SQS, etc.) and processed by a queue worker, keeping web requests fast.  
-You can configure multiple queues with different priorities, and each job class defines a handle method that contains the work logic.  
-Failed jobs are automatically recorded, and Laravel provides tools to retry or inspect them.  
-Using queues also enables horizontal scaling by running several workers across multiple servers.
+The service container is the heart of Laravel’s inversion of control system, allowing you to bind abstractions to concrete implementations. By registering bindings in a service provider, you let the container resolve class dependencies automatically. This enables clean, testable code where classes request the contracts they need rather than concrete classes. When a class is instantiated, Laravel reads its constructor and injects the appropriate objects. Using interfaces promotes loose coupling and makes swapping implementations trivial.
 
-Code example (a simple email sending job):
+Code Example with Comments:  
 
-<?php
-namespace App\Jobs;
+<?php  
+namespace App\Services;  
 
-use App\Mail\WelcomeMail;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use Mail;
+// Define an interface that represents a payment gateway  
+interface PaymentGateway  
+{  
+    public function charge($amount);  
+}  
 
-class SendWelcomeEmail implements ShouldQueue
-{
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+// Concrete implementation that uses Stripe's API  
+class StripeGateway implements PaymentGateway  
+{  
+    public function charge($amount)  
+    {  
+        // Here you would place the Stripe SDK call to create a charge  
+        // For demonstration we simply return a success message  
+        return "Charged \${$amount} via Stripe.";  
+    }  
+}  
 
-    protected $user; // the user instance to receive the email
+// Another implementation could be PayPalGateway implementing the same interface  
 
-    // The job receives the user when it is dispatched
-    public function __construct($user)
-    {
-        $this->user = $user;
-    }
+// In a service provider, bind the interface to the concrete class  
+// This tells the container which class to inject when PaymentGateway is requested  
+namespace App\Providers;  
 
-    // This method is executed by the queue worker
-    public function handle()
-    {
-        // Build the mailable and send it
-        Mail::to($this->user->email)->send(new WelcomeMail($this->user));
-    }
+use Illuminate\Support\ServiceProvider;  
+use App\Services\PaymentGateway;  
+use App\Services\StripeGateway;  
 
-    // Optional: specify a connection or queue name
-    public function viaQueue()
-    {
-        return 'emails';
-    }
-}
+class AppServiceProvider extends ServiceProvider  
+{  
+    public function register()  
+    {  
+        $this->app->bind(PaymentGateway::class, StripeGateway::class);  
+    }  
+}  
 
-// Dispatching the job from a controller or service
-// The job will be pushed onto the default queue driver
-SendWelcomeEmail::dispatch($user);
-?>
+// A controller that receives the payment gateway via constructor injection  
+namespace App\Http\Controllers;  
+
+use App\Http\Controllers\Controller;  
+use App\Services\PaymentGateway;  
+use Illuminate\Http\Request;  
+
+class OrderController extends Controller  
+{  
+    protected $gateway;  
+
+    // Laravel automatically injects the bound StripeGateway instance  
+    public function __construct(PaymentGateway $gateway)  
+    {  
+        $this->gateway = $gateway;  
+    }  
+
+    // Example action that uses the injected payment service  
+    public function store(Request $request)  
+    {  
+        $amount = $request->input('amount');  
+
+        // Delegate the charging logic to the service  
+        $result = $this->gateway->charge($amount);  
+
+        // Return a simple response for demonstration purposes  
+        return response()->json(['message' => $result]);  
+    }  
+}  
 */
 
 /* MySQL
-Topic: MySQL Stored Procedures and Variables
+Topic: Recursive Common Table Expressions (CTEs)
 
-Explanation:
-Stored procedures allow you to encapsulate a set of SQL statements for reuse and better security.  
-They can accept input parameters, return output parameters, and contain control‑flow logic such as IF, LOOP, and WHILE.  
-Local variables inside a procedure are declared with the DECLARE statement and exist only for the duration of the call.  
-Using stored procedures reduces network round‑trips because multiple statements execute on the server side.  
-They also help enforce business rules and can be granted specific execution privileges independent of underlying tables.  
+Explanation:  
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+When defined with the keyword RECURSIVE, a CTE can call itself, enabling the processing of hierarchical or tree‑structured data such as organization charts or category trees.  
+The CTE consists of an anchor query (the base case) and a recursive query that references the CTE name, each iteration building on the previous result set.  
+MySQL evaluates the recursive part repeatedly until it produces no new rows, at which point the final result set is returned.  
+Recursive CTEs are useful for traversing parent‑child relationships, generating sequences, or performing graph traversals without requiring procedural code.  
 
-Code example (with comments):
-CREATE DATABASE IF NOT EXISTS demo_db;
-USE demo_db;
-
--- Create a simple table to work with
-CREATE TABLE IF NOT EXISTS employees (
-    emp_id INT AUTO_INCREMENT PRIMARY KEY,
-    first_name VARCHAR(50),
-    last_name VARCHAR(50),
-    salary DECIMAL(10,2)
-);
-
--- Insert sample data
-INSERT INTO employees (first_name, last_name, salary) VALUES
-('Alice', 'Smith', 72000.00),
-('Bob', 'Johnson', 85000.00),
-('Carol', 'Lee', 64000.00);
-
--- Drop the procedure if it already exists
-DROP PROCEDURE IF EXISTS GetHighEarners;
-
--- Define a stored procedure that returns employees earning above a given threshold
-DELIMITER $$
-
-CREATE PROCEDURE GetHighEarners (IN min_salary DECIMAL(10,2))
-BEGIN
-    -- Declare a local variable to count the rows returned
-    DECLARE emp_count INT DEFAULT 0;
-
-    -- Select employees with salary greater than the input parameter
-    SELECT emp_id, first_name, last_name, salary
-    FROM employees
-    WHERE salary > min_salary;
-
-    -- Get the number of rows found and store it in the local variable
-    GET DIAGNOSTICS CONDITION 1 emp_count = ROW_COUNT;
-
-    -- Return the count as an additional result set
-    SELECT CONCAT('Total high earners: ', emp_count) AS summary;
-END$$
-
-DELIMITER ;
-
--- Call the procedure with a salary threshold of 70000
-CALL GetHighEarners(70000.00);
+Code example (calculating the factorial of numbers 1 through 5 using a recursive CTE):  
+WITH RECURSIVE factorials AS (  
+    -- Anchor member: start with n = 1 and factorial = 1  
+    SELECT 1 AS n, 1 AS fact  
+    UNION ALL  
+    -- Recursive member: increment n and multiply the previous factorial  
+    SELECT n + 1, fact * (n + 1)  
+    FROM factorials  
+    WHERE n < 5   -- stop condition  
+)  
+SELECT n, fact FROM factorials;   -- result: (1,1), (2,2), (3,6), (4,24), (5,120)  
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: Debouncing Functions in JavaScript  
 
 Explanation:  
-A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing. This happens because the inner function forms a lexical environment that includes the outer scope’s variables. Closures enable data privacy, function factories, and the ability to maintain state across multiple calls without using global variables. They are created every time a function is defined, but they only become useful when the inner function is returned or passed elsewhere. Understanding closures is essential for mastering asynchronous patterns, callbacks, and module design in JavaScript.
+Debouncing is a technique that limits how often a function can be executed. It is useful for performance‑critical events such as window resizing, scrolling, or keypresses where the handler may be called many times per second. The debounce wrapper returns a new function that postpones the original call until a specified wait period has elapsed without further invocations. If the returned function is called again before the timer expires, the timer resets, ensuring only the final call runs. This helps prevent unnecessary work and keeps the UI responsive.  
 
-Code Example:
-// A function that creates a counter using a closure
-function createCounter(initialValue) {
-    // This variable is private to the closure
-    let count = initialValue;
+Code example (with comments):  
 
-    // The inner function forms a closure over 'count'
-    return function increment(step = 1) {
-        // It can read and modify 'count' each time it's called
-        count += step;
-        return count;
-    };
-}
+function debounce(func, wait) {                 // func = function to control, wait = delay in ms  
+    let timeoutId = null;                     // holds the timer identifier  
 
-// Using the closure
-const counter = createCounter(5);   // start at 5
-console.log(counter());            // 6
-console.log(counter(2));           // 8
-console.log(counter());            // 9
+    return function(...args) {                // returns a wrapper that captures arguments  
+        const later = () => {                 // function to execute after the wait period  
+            timeoutId = null;                // clear the timer reference  
+            func.apply(this, args);          // invoke original function with proper context  
+        };  
 
-// The 'count' variable is not accessible directly
-// console.log(count); // Uncaught ReferenceError: count is not defined   (uncommenting this line would cause an error)
+        clearTimeout(timeoutId);              // cancel any pending execution  
+        timeoutId = setTimeout(later, wait);  // start a new timer  
+    };  
+}  
+
+// Example usage: log the window width after the user stops resizing for 300 ms  
+const handleResize = debounce(() => {  
+    console.log('Window width:', window.innerWidth);  
+}, 300);  
+
+window.addEventListener('resize', handleResize);   // attach the debounced handler to the resize event  
 */
 
 /* AI
-Topic: Prompt Engineering for Few‑Shot Learning with Large Language Models  
+Topic: Few‑Shot Prompt Engineering for Text Classification with OpenAI’s Chat Completion API  
 
 Explanation:  
-Few‑shot prompting lets a model infer a new task from just a handful of examples embedded in the prompt. By carefully formatting the examples and the instruction, you guide the model’s reasoning and improve output quality. This technique is especially useful when fine‑tuning data is scarce or when rapid prototyping is needed. The prompt typically includes a clear task description, several input‑output pairs as demonstrations, and a placeholder for the new input. Adjusting delimiters, ordering, and the level of detail can significantly affect performance.
+1. Few‑shot prompting supplies a handful of labeled examples directly in the prompt, allowing a large language model to infer the classification rule without fine‑tuning.  
+2. The prompt is structured as a series of “User:” and “Assistant:” turns, ending with the new input whose label is requested.  
+3. By keeping the examples concise and consistent, the model learns the pattern and returns the correct class label.  
+4. The OpenAI Chat Completion endpoint accepts a list of message objects, making it easy to programmatically assemble the few‑shot prompt.  
+5. This approach works well for rapid prototyping, low‑resource domains, or when you need to switch tasks frequently.  
 
-Code example (Python, OpenAI API) with comments:
+Code example (Python, uses the openai library):
 
 import os
 import openai
 
-# Load your API key from an environment variable
+# Set your API key – replace with your actual key or use an environment variable
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Define a few‑shot prompt for translating English to French
-prompt = """Task: Translate the following English sentences into French.
-Example 1:
-English: I love programming.
-French: J'adore programmer.
-
-Example 2:
-English: The weather is nice today.
-French: Il fait beau aujourd'hui.
-
-Now translate:
-English: {input_sentence}
-French:"""
-
-def translate_to_french(sentence):
-    # Insert the user sentence into the prompt
-    filled_prompt = prompt.format(input_sentence=sentence)
-
-    # Call the chat completion endpoint with the filled prompt
+def classify_sentiment(text):
+    # Define two example pairs for sentiment classification
+    examples = [
+        {"role": "user", "content": "I love the new design, it's fantastic!"},
+        {"role": "assistant", "content": "Positive"},
+        {"role": "user", "content": "The product broke after a week, very disappointed."},
+        {"role": "assistant", "content": "Negative"}
+    ]
+    
+    # Append the new query whose sentiment we want to predict
+    messages = examples + [{"role": "user", "content": text}]
+    
+    # Call the Chat Completion API with a deterministic temperature
     response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",          # Choose a suitable model
-        messages=[{"role": "user", "content": filled_prompt}],
-        temperature=0.2,               # Low temperature for deterministic output
-        max_tokens=60
+        model="gpt-4o-mini",
+        messages=messages,
+        temperature=0.0,          # deterministic output
+        max_tokens=5              # we only need a short label
     )
-    # Extract and return the model's translation
-    return response.choices[0].message.content.strip()
+    
+    # Extract the model's answer (strip whitespace for safety)
+    label = response.choices[0].message.content.strip()
+    return label
 
 # Example usage
-english_sentence = "She will arrive tomorrow morning."
-french_translation = translate_to_french(english_sentence)
-print("English:", english_sentence)
-print("French :", french_translation)
+print(classify_sentiment("The movie was okay, not great but not terrible either."))  # Expected: Neutral or Positive/Negative based on examples
+
+# Note: Adding more varied examples (including a neutral case) can improve handling of ambiguous inputs.
 */
 
