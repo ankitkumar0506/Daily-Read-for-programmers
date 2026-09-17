@@ -1,248 +1,224 @@
 <?php
-// 2026-09-16 06:26:33
+// 2026-09-17 06:27:33
 
 /* PHP
-PHP Topic: PDO Prepared Statements for Secure Database Access  
+Topic: PDO Prepared Statements  
 
 Explanation:  
-PDO (PHP Data Objects) provides a uniform interface for accessing different databases. Using prepared statements separates SQL code from data, preventing SQL injection attacks. Placeholders are used in the query and bound to variables at execution time. PDO also supports transaction handling and error reporting via exceptions. This approach makes the code more maintainable and portable across MySQL, PostgreSQL, SQLite, and other DBMS.
+PDO (PHP Data Objects) provides a consistent interface for accessing databases.  
+Prepared statements separate the SQL query from its parameters, improving security by preventing SQL injection.  
+They also allow the database engine to cache the query plan, which can boost performance for repeated executions.  
+Using placeholders (named or positional) makes the code more readable and easier to maintain.  
+When a statement is executed, PDO automatically binds the supplied values to the placeholders.  
 
-Code example (MySQL connection, prepared SELECT, and fetching results):
+Code example:  
+<?php  
+// Create a new PDO instance (replace DSN, username, and password with your own values)  
+$pdo = new PDO('mysql:host=localhost;dbname=testdb;charset=utf8mb4', 'dbuser', 'dbpass');  
 
-<?php
-// Enable exceptions for PDO errors
-$options = [
-    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-];
+// Enable exceptions for error handling  
+$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);  
 
-// Create a PDO instance (replace credentials as needed)
-$dsn = 'mysql:host=localhost;dbname=sample_db;charset=utf8mb4';
-$username = 'db_user';
-$password = 'db_pass';
-$pdo = new PDO($dsn, $username, $password, $options);
+// Prepare an INSERT statement with named placeholders  
+$stmt = $pdo->prepare('INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)');  
 
-// Prepare a SELECT statement with named placeholders
-$sql = 'SELECT id, name, email FROM users WHERE status = :status AND created_at > :date';
-$stmt = $pdo->prepare($sql);
+// Data to be inserted  
+$data = [  
+    'username'   => 'johndoe',  
+    'email'      => 'johndoe@example.com',  
+    'created_at' => date('Y-m-d H:i:s')  
+];  
 
-// Bind values to the placeholders
-$status = 'active';
-$date   = '2023-01-01';
-$stmt->bindParam(':status', $status, PDO::PARAM_STR);
-$stmt->bindParam(':date',   $date,   PDO::PARAM_STR);
+// Execute the prepared statement with the data array; PDO binds the values automatically  
+$stmt->execute($data);  
 
-// Execute the statement
-$stmt->execute();
-
-// Fetch all matching rows
-$users = $stmt->fetchAll();
-
-foreach ($users as $user) {
-    echo "ID: {$user['id']} - Name: {$user['name']} - Email: {$user['email']}\n";
-}
+// Fetch the ID of the newly inserted row  
+$insertedId = $pdo->lastInsertId();  
+echo "New user ID: " . $insertedId;  
 ?>
 */
 
 /* Laravel
-Topic: Form Request Validation in Laravel
+Topic: Laravel Service Container and Automatic Dependency Resolution
 
-Explanation:
-Form Request classes encapsulate validation logic, keeping controllers clean and focused on handling business flow. They extend the base FormRequest class, allowing you to define authorization rules and validation rules in dedicated methods. When a request is type‑hinted in a controller method, Laravel automatically runs the validation before the controller code executes. If validation fails, Laravel redirects back with error messages and old input; if it passes, you can safely retrieve the validated data. This pattern promotes reuse, testability, and a clear separation of concerns throughout the application.
+Explanation:  
+The Service Container is the core of Laravel’s inversion of control (IoC) system, allowing you to bind abstractions to concrete implementations. When a class type‑hint is encountered, Laravel automatically resolves its dependencies from the container. This enables clean, testable code by decoupling class responsibilities. You can bind interfaces to concrete classes in a service provider, and the container will inject the appropriate implementation wherever needed. Automatic resolution works for class constructors, controller methods, and even route closures.
 
-Code Example with Comments:
+Code Example (with inline comments):
 
 <?php
-namespace App\Http\Requests;
+namespace App\Services;
 
-use Illuminate\Foundation\Http\FormRequest;
-
-class StorePostRequest extends FormRequest
+// Define an interface for a payment gateway
+interface PaymentGatewayInterface
 {
-    // Determine whether the user is authorized to make this request.
-    public function authorize()
-    {
-        // Return true to allow any authenticated user; customize as needed.
-        return true;
-    }
+    public function charge(float $amount);
+}
 
-    // Define the validation rules for the incoming request data.
-    public function rules()
+// Concrete implementation using Stripe
+class StripePaymentGateway implements PaymentGatewayInterface
+{
+    public function charge(float $amount)
     {
-        return [
-            // Title is required, must be a string, and max length of 255 characters.
-            'title' => 'required|string|max:255',
-            // Body is required and must be a string.
-            'body' => 'required|string',
-            // Tags are optional but must be an array if present.
-            'tags' => 'sometimes|array',
-            // Each tag ID must exist in the tags table.
-            'tags.*' => 'exists:tags,id',
-        ];
-    }
-
-    // (Optional) Customize the error messages returned for validation failures.
-    public function messages()
-    {
-        return [
-            'title.required' => 'Please provide a title for the post.',
-            'body.required'  => 'The post content cannot be empty.',
-        ];
+        // Here you would call Stripe's API to charge the amount
+        return "Charged \${$amount} via Stripe.";
     }
 }
 
-// In a controller, type‑hint the Form Request to trigger validation automatically.
-<?php
+// Service provider where bindings are registered
+namespace App\Providers;
+
+use Illuminate\Support\ServiceProvider;
+use App\Services\PaymentGatewayInterface;
+use App\Services\StripePaymentGateway;
+
+class PaymentServiceProvider extends ServiceProvider
+{
+    public function register()
+    {
+        // Bind the interface to the concrete class so the container knows what to inject
+        $this->app->bind(PaymentGatewayInterface::class, StripePaymentGateway::class);
+    }
+}
+
+// A controller that receives the dependency automatically
 namespace App\Http\Controllers;
 
-use App\Http\Requests\StorePostRequest;
-use App\Models\Post;
+use App\Services\PaymentGatewayInterface;
+use Illuminate\Http\Request;
 
-class PostController extends Controller
+class CheckoutController extends Controller
 {
-    public function store(StorePostRequest $request)
+    // Laravel resolves the concrete implementation based on the binding above
+    public function process(Request $request, PaymentGatewayInterface $gateway)
     {
-        // At this point, the request data has already passed validation.
-        $validatedData = $request->validated();
-
-        // Create the post using the validated data.
-        $post = Post::create($validatedData);
-
-        // Optionally attach tags if they were provided.
-        if (isset($validatedData['tags'])) {
-            $post->tags()->attach($validatedData['tags']);
-        }
-
-        // Redirect with a success message.
-        return redirect()->route('posts.index')
-                         ->with('success', 'Post created successfully.');
+        $amount = $request->input('amount');
+        $result = $gateway->charge((float) $amount);
+        return response()->json(['message' => $result]);
     }
 }
+?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) and Recursive Queries
+Topic: Common Table Expressions (CTEs) for Recursive Hierarchical Queries
 
 Explanation:
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It is defined using the WITH clause and improves readability by allowing you to break complex queries into logical building blocks. MySQL 8.0 introduced support for both non‑recursive and recursive CTEs. Recursive CTEs are useful for traversing hierarchical data such as organizational charts or folder structures. They consist of an anchor member that provides the starting rows and a recursive member that repeatedly references the CTE until no new rows are produced.
+A Common Table Expression (CTE) allows you to define a temporary result set that can be referenced within a SELECT, INSERT, UPDATE, or DELETE statement.  
+Recursive CTEs are useful for traversing hierarchical data such as organizational charts, categories, or tree structures stored in a single table.  
+The CTE consists of an anchor member (the base level) and a recursive member that repeatedly joins the CTE to the original table.  
+Each iteration adds a new level to the result set until no more rows satisfy the recursive join condition.  
+MySQL supports recursive CTEs starting from version 8.0, enabling powerful queries without the need for stored procedures or multiple round‑trips.
 
-Code example (calculating a simple hierarchy of employee managers):
+Code Example (with comments):
+-- Sample table for a simple employee hierarchy
+CREATE TABLE employees (
+    emp_id INT PRIMARY KEY,
+    emp_name VARCHAR(50),
+    manager_id INT NULL   -- NULL for top‑level manager
+);
 
--- Define the CTE named employee_hierarchy
-WITH RECURSIVE employee_hierarchy AS (
-    -- Anchor member: start with top‑level managers (no manager_id)
-    SELECT 
-        employee_id,
-        employee_name,
-        manager_id,
-        1 AS level
+-- Insert sample data
+INSERT INTO employees (emp_id, emp_name, manager_id) VALUES
+(1, 'Alice', NULL),    -- CEO
+(2, 'Bob', 1),         -- reports to Alice
+(3, 'Carol', 1),       -- reports to Alice
+(4, 'Dave', 2),        -- reports to Bob
+(5, 'Eve', 2),         -- reports to Bob
+(6, 'Frank', 3);       -- reports to Carol
+
+-- Recursive CTE to retrieve the full reporting chain for a given employee
+WITH RECURSIVE reporting_chain AS (
+    -- Anchor member: start with the employee of interest (e.g., Eve, emp_id = 5)
+    SELECT emp_id, emp_name, manager_id, 0 AS level
     FROM employees
-    WHERE manager_id IS NULL
+    WHERE emp_id = 5
 
     UNION ALL
 
-    -- Recursive member: join employees to their managers
-    SELECT 
-        e.employee_id,
-        e.employee_name,
-        e.manager_id,
-        eh.level + 1 AS level
+    -- Recursive member: join to the manager of the current row
+    SELECT e.emp_id, e.emp_name, e.manager_id, rc.level + 1
     FROM employees e
-    INNER JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id
+    INNER JOIN reporting_chain rc ON e.emp_id = rc.manager_id
 )
--- Query the CTE to list each employee with their depth in the hierarchy
-SELECT 
-    employee_id,
-    employee_name,
-    manager_id,
-    level
-FROM employee_hierarchy
-ORDER BY level, manager_id;
+SELECT emp_id, emp_name, manager_id, level
+FROM reporting_chain
+ORDER BY level;
+
+-- The result shows Eve (level 0), her manager Bob (level 1), and the top‑level manager Alice (level 2).
 */
 
 /* JavaScript
-Topic: Debouncing User Input in JavaScript  
+Topic: Async/Await Error Handling in JavaScript
 
-Explanation:  
-Debouncing is a technique that limits how often a function can be executed by postponing its call until after a specified waiting period has elapsed since the last invocation. It is especially useful for performance‑critical events such as window resizing, scrolling, or typing in an input field where rapid, repeated calls can cause lag. The debounce wrapper returns a new function that resets a timer each time it is invoked; the original function runs only when the timer completes without interruption. This prevents unnecessary processing and reduces load on the browser. Implementing debounce manually helps you understand closures and timer management without relying on external libraries.
+Explanation:
+Async functions let you write asynchronous code that looks synchronous, but you still need to manage failures. Using try…catch around an await expression captures any promise rejection, keeping error handling centralized. This pattern avoids the “callback hell” of nested then/catch chains and makes stack traces clearer. You can also rethrow errors or transform them before they propagate to higher‑level handlers. Proper error handling is essential for reliable network requests, file I/O, and any operation that may fail at runtime.
 
-Code example (with comments):
-
-function debounce(func, wait) {
-    // Holds the timeout ID across calls
-    let timeoutId = null;
-
-    // Return a new function that will be used in place of the original
-    return function(...args) {
-        // If a timer is already running, clear it
-        if (timeoutId !== null) {
-            clearTimeout(timeoutId);
+Code Example:
+// An async function that fetches JSON data from a URL
+async function fetchJson(url) {
+    try {
+        // Await the fetch promise; if it fails, control jumps to catch
+        const response = await fetch(url);
+        // Check for HTTP errors manually
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-
-        // Start a new timer; when it finishes, invoke the original function
-        timeoutId = setTimeout(() => {
-            // Preserve the correct this context and pass through arguments
-            func.apply(this, args);
-        }, wait);
-    };
+        // Await the JSON parsing promise
+        const data = await response.json();
+        return data;                     // Successful result
+    } catch (err) {
+        // Log the error and optionally transform it
+        console.error('Failed to fetch JSON:', err.message);
+        // Rethrow to allow callers to handle it further
+        throw err;
+    }
 }
 
-// Example usage: log the input value only after the user stops typing for 300 ms
-const searchInput = document.getElementById('search');
-searchInput.addEventListener('input', debounce(function(event) {
-    console.log('Searching for:', event.target.value);
-}, 300));
+// Using the async function with its own error handling
+(async () => {
+    try {
+        const result = await fetchJson('https://api.example.com/data');
+        console.log('Received data:', result);
+    } catch (e) {
+        console.error('Top‑level error handling:', e);
+    }
+})();
 */
 
 /* AI
 Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
 
 Explanation:  
-Few‑shot prompting supplies the model with a small number of example input‑output pairs inside the prompt, guiding it to produce the desired format for new queries. This technique is useful when you lack large labeled datasets but need consistent, structured responses. By carefully crafting the examples and using system messages to set behavior, you can achieve high accuracy on tasks such as data extraction, classification, or code generation. The approach works across GPT‑3.5‑Turbo and GPT‑4 models and can be integrated into any application that calls the OpenAI API. Adjust the examples to match the target task and monitor token usage, as each example adds to the overall cost.
+Few‑shot prompting supplies the model with a handful of example interactions to steer its behavior without fine‑tuning. By embedding these examples directly in the message list, you can teach the model the desired input‑output pattern, tone, or domain‑specific knowledge. This technique works well for classification, data extraction, or code generation tasks where a full dataset isn’t available. The prompt remains lightweight, making it suitable for real‑time API calls. Adjusting the number and quality of examples lets you balance accuracy against token cost.
 
-Code example (Python, using the openai library):
+Code example (Python, using the openai package):
 import os
 import openai
 
-# Load your OpenAI API key from an environment variable
+# Set your API key – normally you’d load this from an environment variable
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def classify_sentiment(text):
-    # Define a system message that sets the assistant’s role
-    system_msg = {
-        "role": "system",
-        "content": "You are a helpful assistant that classifies sentences as Positive, Negative, or Neutral."
-    }
+# Define a few-shot prompt: two examples of converting a natural‑language request into a SQL query
+messages = [
+    {"role": "system", "content": "You are an assistant that translates English questions into PostgreSQL queries."},
+    {"role": "user", "content": "Show me the total sales for each product category in 2023."},
+    {"role": "assistant", "content": "SELECT category, SUM(sales) FROM orders WHERE year = 2023 GROUP BY category;"},
+    {"role": "user", "content": "List the names of customers who placed more than five orders."},
+    {"role": "assistant", "content": "SELECT customer_name FROM orders GROUP BY customer_name HAVING COUNT(*) > 5;"},
+    # The actual user query we want the model to answer
+    {"role": "user", "content": "Give me the average rating for each movie released after 2020."}
+]
 
-    # Provide two few‑shot examples to illustrate the desired output format
-    examples = [
-        {"role": "user", "content": "I love the new phone I bought!"},
-        {"role": "assistant", "content": "Positive"},
-        {"role": "user", "content": "The traffic today was terrible."},
-        {"role": "assistant", "content": "Negative"}
-    ]
+response = openai.ChatCompletion.create(
+    model="gpt-4o-mini",        # Choose a suitable model
+    messages=messages,
+    temperature=0.0             # Deterministic output for code generation
+)
 
-    # The actual user query to classify
-    user_msg = {"role": "user", "content": text}
-
-    # Build the full message list
-    messages = [system_msg] + examples + [user_msg]
-
-    # Call the Chat Completion endpoint
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=messages,
-        temperature=0.0  # deterministic output
-    )
-
-    # Extract and return the model’s classification
-    classification = response.choices[0].message.content.strip()
-    return classification
-
-# Example usage
-if __name__ == "__main__":
-    sample = "The movie was okay, not great but not bad either."
-    result = classify_sentiment(sample)
-    print(f"Sentiment: {result}")
+# Extract and print the generated SQL query
+generated_sql = response.choices[0].message.content.strip()
+print("Generated SQL query:")
+print(generated_sql)
 */
 
