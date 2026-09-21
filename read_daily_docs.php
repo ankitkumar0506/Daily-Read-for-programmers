@@ -1,212 +1,238 @@
 <?php
-// 2026-09-20 06:40:58
+// 2026-09-21 06:45:50
 
 /* PHP
-Topic: PHP Generators for Efficient Memory Usage  
+PHP Generators (Yield)
 
-Explanation:  
-Generators allow you to create iterators without building large arrays in memory.  
-Each value is produced on demand using the yield keyword, which pauses the function’s execution.  
-This is especially useful when processing big data sets, reading large files, or streaming results.  
-Generators reduce memory consumption and can improve performance in long-running scripts.  
-They behave like any other Traversable object, so you can use them in foreach loops directly.  
+Explanation:
+- Generators provide a simple way to implement iterators without the overhead of building a full iterator class.
+- By using the `yield` keyword, a function can return values one at a time, pausing its execution state between each yield.
+- This approach reduces memory consumption, especially when dealing with large data sets or infinite sequences.
+- Generators are lazy; they produce each value only when requested by the consumer.
+- They can also receive input via `send()` and return a final value with `return` in PHP 7+.
 
-Code example:  
-<?php  
-// Define a generator that yields numbers from 1 up to a given limit  
-function getNumbers(int $limit): Generator {  
-    for ($i = 1; $i <= $limit; $i++) {  
-        // yield returns the current number and pauses execution until the next iteration  
-        yield $i;  
-    }  
-}  
+Code Example:
+// A generator function that yields the first n Fibonacci numbers
+function fibonacciGenerator(int $limit): Generator {
+    $a = 0;
+    $b = 1;
+    $count = 0;
 
-// Use the generator in a foreach loop; only one number lives in memory at a time  
-foreach (getNumbers(1000000) as $number) {  
-    // Process each number – here we simply output it  
-    echo $number . PHP_EOL;  
-}  
-?>
+    while ($count < $limit) {
+        // Yield the current value and pause execution
+        yield $a;
+        // Calculate next Fibonacci number
+        $temp = $a + $b;
+        $a = $b;
+        $b = $temp;
+        $count++;
+    }
+
+    // Optional final return value (available via getReturn())
+    return "Generated $limit numbers";
+}
+
+// Using the generator
+$limit = 10;
+$gen = fibonacciGenerator($limit);
+
+foreach ($gen as $index => $value) {
+    echo "Fib[$index] = $value\n";
+}
+
+// Retrieve the generator's return value (available in PHP 7+)
+$finalMessage = $gen->getReturn();
+echo $finalMessage . "\n";
 */
 
 /* Laravel
-Topic: Route Model Binding in Laravel
+Laravel Service Container & Dependency Injection  
 
-Explanation:
-Laravel’s route model binding automatically injects model instances into your routes based on the segment values. When a route contains a parameter that matches a model’s primary key, Laravel resolves it and provides the fully hydrated model to the controller. This eliminates the need to manually query the database inside controller methods. You can use implicit binding for standard primary keys or define explicit bindings for custom lookup logic. It also respects soft‑deletes and will automatically return a 404 response if the record is not found.
+The service container is Laravel’s powerful IoC (Inversion of Control) manager that resolves class dependencies automatically. By binding abstractions (interfaces) to concrete implementations, you decouple code and make it easier to test. Dependency injection lets you type‑hint required services in constructors or methods, and the container provides the appropriate instances. This pattern promotes single responsibility and keeps controllers thin. You can bind singletons, contextual bindings, or use automatic resolution for classes without explicit bindings.
 
-Code Example:
-// routes/web.php
-use App\Http\Controllers\PostController;
-use Illuminate\Support\Facades\Route;
+Example – a simple payment service bound in the container and injected into a controller:
 
-// Implicit binding – Laravel will resolve the {post} parameter to a Post model instance
-Route::get('posts/{post}', [PostController::class, 'show']);
+// app/Contracts/PaymentGateway.php
+<?php
+namespace App\Contracts;
 
-// app/Models/Post.php
-namespace App\Models;
-
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\SoftDeletes;
-
-class Post extends Model
+interface PaymentGateway
 {
-    use SoftDeletes; // ensures soft‑deleted posts are not found by binding
-    protected $fillable = ['title', 'content'];
+    public function charge(float $amount);
 }
 
-// app/Http/Controllers/PostController.php
-namespace App\Http\Controllers;
+// app/Services/StripePaymentGateway.php
+<?php
+namespace App\Services;
 
-use App\Models\Post;
-use Illuminate\Http\Response;
+use App\Contracts\PaymentGateway;
 
-class PostController extends Controller
+class StripePaymentGateway implements PaymentGateway
 {
-    // The $post argument is automatically injected by route model binding
-    public function show(Post $post): Response
+    // Here you would inject Stripe SDK client if needed
+    public function charge(float $amount)
     {
-        // $post is a fully populated Eloquent model; no need to query the database again
-        return response()->json([
-            'id'      => $post->id,
-            'title'   => $post->title,
-            'content' => $post->content,
-        ]);
+        // Simulated charge logic
+        return "Charged $$amount using Stripe.";
     }
 }
 
-// If you need a custom binding (e.g., lookup by slug), define it in a service provider:
-// app/Providers/RouteServiceProvider.php
-public function boot()
-{
-    parent::boot();
+// app/Providers/AppServiceProvider.php
+<?php
+namespace App\Providers;
 
-    // Explicit binding: resolve {post} using the 'slug' column instead of the id
-    \Illuminate\Support\Facades\Route::bind('post', function ($value) {
-        return \App\Models\Post::where('slug', $value)->firstOrFail();
-    });
+use Illuminate\Support\ServiceProvider;
+use App\Contracts\PaymentGateway;
+use App\Services\StripePaymentGateway;
+
+class AppServiceProvider extends ServiceProvider
+{
+    public function register()
+    {
+        // Bind the interface to its concrete implementation
+        $this->app->bind(PaymentGateway::class, StripePaymentGateway::class);
+    }
+
+    public function boot()
+    {
+        //
+    }
+}
+
+// app/Http/Controllers/OrderController.php
+<?php
+namespace App\Http\Controllers;
+
+use App\Contracts\PaymentGateway;
+use Illuminate\Http\Request;
+
+class OrderController extends Controller
+{
+    protected $paymentGateway;
+
+    // The container injects the concrete StripePaymentGateway automatically
+    public function __construct(PaymentGateway $paymentGateway)
+    {
+        $this->paymentGateway = $paymentGateway;
+    }
+
+    public function store(Request $request)
+    {
+        $amount = $request->input('amount');
+
+        // Use the injected service to process the payment
+        $result = $this->paymentGateway->charge($amount);
+
+        return response()->json(['message' => $result]);
+    }
 }
 */
 
 /* MySQL
-Topic Name: MySQL Stored Procedures  
+MySQL Topic: Common Table Expressions (CTE) and Recursive Queries
 
-Explanation:  
-A stored procedure is a named set of SQL statements that can be stored in the database and invoked repeatedly.  
-It allows you to encapsulate complex logic, reduce client‑side processing, and improve performance by minimizing round trips.  
-Procedures can accept input parameters, return output parameters, and use control‑flow constructs such as IF, LOOP, and WHILE.  
-When a procedure is called, it runs with the privileges of its definer, which can be used to enforce security policies.  
-Changes made inside a procedure are subject to transaction control, so you can COMMIT or ROLLBACK as needed.  
+Explanation:
+- A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.
+- Defined using the WITH clause, a CTE improves readability and allows you to break complex queries into logical building blocks.
+- CTEs can be recursive, enabling hierarchical data traversal such as organizational charts or category trees.
+- In MySQL 8.0 and later, multiple CTEs can be defined in a single WITH clause, separated by commas.
+- Recursive CTEs require an anchor member (the base case) and a recursive member that references the CTE itself, plus a termination condition to avoid infinite loops.
 
-Code Example:  
-    DELIMITER $$  
-    CREATE PROCEDURE TransferFunds(  
-        IN p_from_account INT,  
-        IN p_to_account INT,  
-        IN p_amount DECIMAL(10,2)  
-    )  
-    BEGIN  
-        -- Verify sufficient balance  
-        DECLARE v_balance DECIMAL(10,2);  
-        SELECT balance INTO v_balance FROM accounts WHERE account_id = p_from_account;  
-        IF v_balance < p_amount THEN  
-            SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Insufficient funds';  
-        END IF;  
-
-        -- Debit source account  
-        UPDATE accounts SET balance = balance - p_amount WHERE account_id = p_from_account;  
-
-        -- Credit destination account  
-        UPDATE accounts SET balance = balance + p_amount WHERE account_id = p_to_account;  
-
-        -- Optional: log the transfer  
-        INSERT INTO transfers (from_account, to_account, amount, transfer_date)  
-        VALUES (p_from_account, p_to_account, p_amount, NOW());  
-    END$$  
-    DELIMITER ;  
-
-To execute the procedure:  
-    CALL TransferFunds(101, 202, 250.00);   (adjust account IDs and amount as needed)  
+Code Example (finding all sub‑categories of a given category using a recursive CTE):
+-- Define the CTE named "category_hierarchy"
+WITH RECURSIVE category_hierarchy AS (
+    -- Anchor member: start with the root category (e.g., id = 1)
+    SELECT id, name, parent_id, 0 AS level
+    FROM categories
+    WHERE id = 1
+    UNION ALL
+    -- Recursive member: find children of the categories already in the hierarchy
+    SELECT c.id, c.name, c.parent_id, ch.level + 1
+    FROM categories c
+    INNER JOIN category_hierarchy ch ON c.parent_id = ch.id
+)
+-- Use the CTE to retrieve the full hierarchy ordered by level
+SELECT id, name, parent_id, level
+FROM category_hierarchy
+ORDER BY level, name;
 */
 
 /* JavaScript
-Topic: Closures and Lexical Scoping  
+Topic: JavaScript Closures
 
 Explanation:  
-- A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing.  
-- JavaScript’s lexical scoping means that a function’s scope is determined by its physical placement in the source code, not by where it is called.  
-- Closures allow private state, data encapsulation, and function factories that can generate specialized behavior on demand.  
-- They are created automatically whenever an inner function references a variable from its outer scope.  
-- Understanding closures is essential for working with callbacks, event handlers, and module patterns in modern JavaScript.  
+A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing.  
+Closures enable data privacy, allowing you to expose only selected functionality while keeping internal state hidden.  
+They are created every time a function is defined, capturing the surrounding lexical environment at that moment.  
+Common use‑cases include function factories, memoization, and implementing private variables in objects.  
+Understanding closures is essential for mastering asynchronous patterns and module design in JavaScript.
 
-Code example (with comments):  
-function makeCounter() {  
-    let count = 0; // private variable that will be captured by the returned inner function  
-    return function() {  
-        count += 1; // modifies the enclosed count variable each time the inner function runs  
-        return count; // returns the current count value  
-    }; // end of inner function (the closure)  
-} // end of makeCounter  
+Code example with comments:
 
-// Create two independent counters using the closure factory  
-const counterA = makeCounter(); // each call to makeCounter produces a new lexical environment  
-console.log(counterA()); // 1  
-console.log(counterA()); // 2  
+function makeCounter() {                // outer function creates a private variable
+    let count = 0;                     // this variable is scoped to makeCounter
+    return function() {                // inner function forms a closure over count
+        count++;                       // can modify the private count variable
+        console.log('Current count:', count);
+    };
+}
 
-const counterB = makeCounter(); // a separate closure with its own count variable  
-console.log(counterB()); // 1   (counterB’s count starts from 0)  
+const counterA = makeCounter();         // each call gets its own independent closure
+const counterB = makeCounter();
+
+counterA(); // Output: Current count: 1
+counterA(); // Output: Current count: 2
+counterB(); // Output: Current count: 1   (separate closure, independent state)
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
+Topic: Few‑Shot Prompt Engineering with OpenAI Chat Completion API  
 
 Explanation:  
-Few‑shot prompting supplies the model with a small set of example input‑output pairs before the actual query, guiding it toward the desired format and style. This technique is especially useful when you need structured responses, such as JSON or code snippets, without fine‑tuning a model. By placing the examples in the system or user messages, the model treats them as context and mimics the pattern. The number of examples balances clarity against token cost—typically 2–4 examples work well. Adjusting the temperature and max_tokens further refines the consistency of the output.
+Few‑shot prompting supplies a small set of example interactions within the prompt to guide the model’s behavior without fine‑tuning. By framing the task with a few input‑output pairs, the model can infer the desired pattern and apply it to new inputs. This technique works well for classification, transformation, or extraction tasks where a full dataset is unavailable. The examples must be clear, consistent, and as close as possible to the target domain. Adjusting temperature and max_tokens helps balance creativity and deterministic output.  
 
 Code example (Python, using the openai library):  
 
 import os  
 import openai  
 
-# Set your API key (ensure it is stored securely, e.g., in an environment variable)  
+# Load your OpenAI API key from an environment variable  
 openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Define a few‑shot prompt that teaches the model how to convert a description into JSON  
-few_shot_examples = [  
-    {  
-        "role": "user",  
-        "content": "Convert this product description to JSON:\n\nName: Solar Power Bank\nPrice: $29.99\nFeatures: 10000mAh, Waterproof, USB‑C input."  
-    },  
-    {  
-        "role": "assistant",  
-        "content": '{\n  "name": "Solar Power Bank",\n  "price": 29.99,\n  "features": ["10000mAh", "Waterproof", "USB‑C input"]\n}'  
-    },  
-    {  
-        "role": "user",  
-        "content": "Convert this product description to JSON:\n\nName: Bluetooth Headphones\nPrice: $59.95\nFeatures: Noise‑cancelling, 30‑hour battery, Touch controls."  
-    },  
-    {  
-        "role": "assistant",  
-        "content": '{\n  "name": "Bluetooth Headphones",\n  "price": 59.95,\n  "features": ["Noise‑cancelling", "30‑hour battery", "Touch controls"]\n}'  
-    }  
-]  
+# Define a few‑shot prompt that teaches the model to convert sentences to passive voice  
+few_shot_prompt = """Convert the following active‑voice sentences to passive voice.
 
-# New request that follows the same pattern  
-new_query = {  
-    "role": "user",  
-    "content": "Convert this product description to JSON:\n\nName: Smart Thermostat\nPrice: $199.00\nFeatures: Wi‑Fi, Voice control, Energy saving mode."  
-}  
+Active: The chef cooked the meal.  
+Passive: The meal was cooked by the chef.
 
-messages = few_shot_examples + [new_query]  
+Active: The student solved the problem.  
+Passive: The problem was solved by the student.
 
-response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",          # Choose a suitable model for cost‑effective prompting  
-    messages=messages,  
-    temperature=0.0,               # Low temperature for deterministic JSON output  
-    max_tokens=200,                # Enough tokens for the structured response  
-)  
+Active: {input_sentence}
+Passive:"""  
 
-# Print the model's JSON output (assistant’s content)  
-print(response.choices[0].message.content)  
+def convert_to_passive(sentence: str) -> str:  
+    # Insert the user sentence into the prompt template  
+    prompt = few_shot_prompt.format(input_sentence=sentence)  
+
+    # Call the Chat Completion endpoint with a deterministic temperature  
+    response = openai.ChatCompletion.create(  
+        model="gpt-4o-mini",  
+        messages=[{"role": "user", "content": prompt}],  
+        temperature=0.0,          # low temperature for consistent output  
+        max_tokens=60,            # enough for a short sentence  
+        n=1,  
+    )  
+
+    # Extract the generated passive sentence from the response  
+    passive = response.choices[0].message.content.strip()  
+    return passive  
+
+# Example usage  
+if __name__ == "__main__":  
+    active_sentence = "The engineer designed the circuit."  
+    passive_sentence = convert_to_passive(active_sentence)  
+    print("Active:", active_sentence)  
+    print("Passive:", passive_sentence)  
 */
 
