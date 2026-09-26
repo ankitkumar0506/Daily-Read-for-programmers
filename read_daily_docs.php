@@ -1,119 +1,92 @@
 <?php
-// 2026-09-25 06:23:18
+// 2026-09-26 06:23:07
 
 /* PHP
-Topic: PHP Traits  
+Topic: PHP PDO and Prepared Statements  
 
 Explanation:  
-- Traits are a mechanism for code reuse in single inheritance languages like PHP.  
-- They allow you to compose classes from reusable sets of methods without using inheritance.  
-- A trait can contain methods, properties, and even abstract method declarations.  
-- When a class uses a trait, the trait’s methods become part of that class as if they were defined directly inside it.  
-- Conflicts between traits or between a trait and a class are resolved using the `insteadof` and `as` operators.  
+PDO (PHP Data Objects) provides a consistent interface for accessing many different databases.  
+Using prepared statements with PDO helps prevent SQL injection by separating query structure from data.  
+You can bind parameters by name or position, allowing the database driver to handle proper escaping.  
+PDO also supports transactions, making it easy to commit or roll back a group of operations.  
+Error handling with PDO can be configured to throw exceptions, simplifying debugging.
 
-Code example (with comments):  
-
+Code example with comments:  
 <?php
-// Define a trait that provides logging functionality
-trait LoggerTrait {
-    // Simple method to log a message with a timestamp
-    public function log(string $message): void {
-        echo "[" . date('Y-m-d H:i:s') . "] " . $message . PHP_EOL;
-    }
+// Create a new PDO instance for a MySQL database
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'dbpass';
 
-    // Abstract method that the using class must implement
-    abstract protected function getLogLevel(): string;
+try {
+    $pdo = new PDO($dsn, $username, $password);
+    // Set error mode to exceptions for easier debugging
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch (PDOException $e) {
+    die('Connection failed: ' . $e->getMessage());
 }
 
-// First class that uses the LoggerTrait
-class FileProcessor {
-    use LoggerTrait; // Include the trait
+// Prepare an INSERT statement with named placeholders
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
+$stmt = $pdo->prepare($sql);
 
-    // Implement the abstract method required by the trait
-    protected function getLogLevel(): string {
-        return 'INFO';
-    }
+// Bind values to the placeholders
+$stmt->bindValue(':username', 'alice');
+$stmt->bindValue(':email', 'alice@example.com');
 
-    public function process(): void {
-        $this->log("Starting file processing at level " . $this->getLogLevel());
-        // ... processing logic ...
-        $this->log("File processing completed.");
-    }
+// Execute the prepared statement
+if ($stmt->execute()) {
+    echo 'New user inserted with ID: ' . $pdo->lastInsertId();
+} else {
+    echo 'Insert failed.';
 }
 
-// Second class that also uses the same trait
-class EmailSender {
-    use LoggerTrait {
-        // Resolve method name conflict if needed (none here)
-        // Example: log as emailLog;
-        // log as emailLog;
-    }
+// Example of a SELECT using positional placeholders
+$sqlSelect = 'SELECT id, username, email FROM users WHERE id > ?';
+$stmtSelect = $pdo->prepare($sqlSelect);
+$stmtSelect->execute([0]);
 
-    protected function getLogLevel(): string {
-        return 'DEBUG';
-    }
-
-    public function send(): void {
-        $this->log("Sending email with level " . $this->getLogLevel());
-        // ... email sending logic ...
-        $this->log("Email sent successfully.");
-    }
+// Fetch all matching rows as an associative array
+$users = $stmtSelect->fetchAll(PDO::FETCH_ASSOC);
+foreach ($users as $user) {
+    echo $user['id'] . ': ' . $user['username'] . ' (' . $user['email'] . ')' . PHP_EOL;
 }
-
-// Instantiate and use the classes
-$processor = new FileProcessor();
-$processor->process();
-
-$email = new EmailSender();
-$email->send();
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container and Dependency Injection
+Laravel Topic: Service Container & Dependency Injection  
 
-Explanation:
-The Service Container is the backbone of Laravel’s inversion of control (IoC) system, responsible for managing class dependencies and performing automatic injection. It allows you to bind abstractions (interfaces) to concrete implementations, enabling flexible swapping of components without changing dependent code. When a class requests a dependency in its constructor, the container resolves and injects the appropriate instance automatically. This promotes loose coupling, easier testing, and adherence to the SOLID principles. Service providers are the typical place to register bindings, ensuring they are available throughout the application lifecycle.
+Explanation:  
+The Laravel service container is a powerful tool that manages class dependencies and performs automatic resolution. It allows you to bind abstractions (interfaces) to concrete implementations, making your code more testable and loosely coupled. When a class is resolved from the container, Laravel inspects its constructor and injects the required dependencies automatically. This mechanism underpins most of Laravel’s features, including controller injection, event listeners, and job handling. By mastering the container, you can customize how objects are built and swap implementations without changing the consuming code.
 
-Code Example:
-// app/Providers/AppServiceProvider.php
+Code example (binding an interface and injecting it into a controller):
+
 <?php
-
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;          // Interface
-use App\Services\StripePaymentGateway;    // Concrete class
+use App\Contracts\PaymentGateway;
+use App\Services\StripePaymentGateway;
 
 class AppServiceProvider extends ServiceProvider
 {
     public function register()
     {
-        // Bind the interface to a concrete implementation
+        // Bind the PaymentGateway contract to the Stripe implementation
         $this->app->bind(PaymentGateway::class, function ($app) {
-            // You could read config values here to choose a gateway dynamically
+            // You could pull configuration values here if needed
             return new StripePaymentGateway(config('services.stripe.secret'));
         });
     }
-
-    public function boot()
-    {
-        //
-    }
 }
-
-// app/Contracts/PaymentGateway.php
-<?php
 
 namespace App\Contracts;
 
 interface PaymentGateway
 {
-    public function charge(float $amount, string $currency);
+    public function charge(float $amount, string $currency, array $metadata = []);
 }
-
-// app/Services/StripePaymentGateway.php
-<?php
 
 namespace App\Services;
 
@@ -124,152 +97,163 @@ class StripePaymentGateway implements PaymentGateway
 {
     protected $stripe;
 
-    public function __construct(string $apiKey)
+    public function __construct(string $secretKey)
     {
-        $this->stripe = new StripeClient($apiKey);
+        // Initialise the Stripe SDK client
+        $this->stripe = new StripeClient($secretKey);
     }
 
-    public function charge(float $amount, string $currency)
+    public function charge(float $amount, string $currency, array $metadata = [])
     {
-        // Example call to Stripe API
+        // Create a charge using Stripe's API
         return $this->stripe->charges->create([
-            'amount' => $amount * 100, // Stripe expects amount in cents
+            'amount' => $amount * 100, // amount in cents
             'currency' => $currency,
-            'source' => 'tok_visa', // placeholder token
-            'description' => 'Test Charge',
+            'metadata' => $metadata,
+            // In a real app you would also pass a source or customer ID
         ]);
     }
 }
 
-// app/Http/Controllers/CheckoutController.php
-<?php
-
 namespace App\Http\Controllers;
 
-use App\Contracts\PaymentGateway;   // The interface is type‑hinted
+use App\Contracts\PaymentGateway;
 use Illuminate\Http\Request;
 
-class CheckoutController extends Controller
+class PaymentController extends Controller
 {
-    protected $paymentGateway;
+    protected $gateway;
 
-    // The container automatically injects the concrete implementation
-    public function __construct(PaymentGateway $paymentGateway)
+    // Laravel automatically injects the bound implementation
+    public function __construct(PaymentGateway $gateway)
     {
-        $this->paymentGateway = $paymentGateway;
+        $this->gateway = $gateway;
     }
 
-    public function process(Request $request)
+    public function charge(Request $request)
     {
-        $amount   = $request->input('amount');
-        $currency = $request->input('currency', 'usd');
+        $amount = $request->input('amount');
+        $currency = $request->input('currency', 'USD');
 
-        // Use the injected service to perform the charge
-        $charge = $this->paymentGateway->charge($amount, $currency);
+        // Use the injected gateway to perform the charge
+        $result = $this->gateway->charge($amount, $currency, ['order_id' => $request->input('order_id')]);
 
-        return response()->json($charge);
+        return response()->json($result);
     }
 }
 */
 
 /* MySQL
-Topic: Composite Indexes for Multi‑Column Searches
+Topic Name: Common Table Expressions (CTEs) and Recursive Queries  
 
-Explanation:
-A composite index is created on two or more columns of a table. It speeds up queries that filter or sort by the leading columns of the index in the same order. The index can be used for equality conditions on the first column and range conditions on the next, but not efficiently if the columns are referenced out of order. Proper column ordering in the index reflects the most selective columns first, which reduces the number of rows examined. Composite indexes also support covering queries, allowing MySQL to retrieve all needed data from the index without touching the table rows. Over‑indexing can increase write overhead, so use them only when query patterns justify the benefit.
+Explanation:  
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs are defined using the WITH clause and improve readability by allowing you to break complex queries into logical building blocks.  
+MySQL supports both non‑recursive and recursive CTEs; the latter can be used to walk hierarchical data such as organization charts or tree structures.  
+Recursive CTEs consist of an anchor member (the starting rows) and a recursive member that repeatedly references the CTE itself until a termination condition is met.  
+They are evaluated in a single execution plan, which can be more efficient than using procedural loops or multiple temporary tables.  
 
-Code Example (with comments):
-CREATE TABLE orders (
-    order_id INT AUTO_INCREMENT PRIMARY KEY,
-    customer_id INT NOT NULL,
-    order_date DATE NOT NULL,
-    status VARCHAR(20) NOT NULL,
-    total DECIMAL(10,2) NOT NULL,
-    INDEX idx_customer_date_status (customer_id, order_date, status)  -- composite index on three columns
-);
+Code Example (generating numbers 1 through 10 with a recursive CTE):  
 
--- Query that can use the composite index efficiently:
-SELECT order_id, total
-FROM orders
-WHERE customer_id = 1023               -- equality on the first indexed column
-  AND order_date >= '2024-01-01'       -- range condition on the second column
-  AND status = 'shipped';              -- additional filter; still uses the same index
-
--- Query that cannot fully use the index because columns are out of order:
-SELECT order_id, total
-FROM orders
-WHERE status = 'shipped'               -- first column in index is not referenced
-  AND customer_id = 1023;              -- MySQL may use only the part of the index or ignore it altogether.
+WITH RECURSIVE numbers AS (  
+    -- Anchor member: start with the first number  
+    SELECT 1 AS n  
+    UNION ALL  
+    -- Recursive member: add 1 to the previous number while less than 10  
+    SELECT n + 1  
+    FROM numbers  
+    WHERE n < 10  
+)  
+SELECT n  
+FROM numbers;  
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: JavaScript Closures
 
-Explanation:  
-A closure is a function that retains access to the variables from its outer (enclosing) lexical scope even after that outer function has finished executing.  
-Closures enable data privacy, allowing you to hide internal state from the global scope.  
-They are created each time a function is defined, not when it is called.  
-Common uses include function factories, memoization, and maintaining state in event handlers.  
-Understanding closures is essential for mastering asynchronous patterns and modular code design.  
+Explanation:
+A closure is a function that retains access to the variables from its outer (enclosing) scope even after that outer function has finished executing.  
+Closures enable data privacy, allowing you to expose only the functions you want while keeping internal state hidden.  
+They are created each time a function is defined, capturing the current lexical environment.  
+Common use cases include factories, module patterns, and callbacks that need persistent state.  
+Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state across invocations.
 
-Code example with comments:  
+Code Example (with comments):
+function createCounter(initialValue) {          // outer function defines a private variable
+    let count = initialValue;                  // this variable is captured by the inner function
 
-function makeCounter() {  
-    let count = 0;                     // variable defined in the outer function's scope  
-    return function() {               // inner function forms a closure over 'count'  
-        count += 1;                    // modifies the captured variable  
-        return count;                  // returns the updated count  
-    };                                 // the inner function is returned and can be used later  
-}  
+    return function increment(step) {          // the returned function forms a closure
+        count += step;                         // it can read and modify 'count' each call
+        console.log('Current count:', count); // displays the updated count
+    };
+}
 
-const counterA = makeCounter();        // creates a new closure with its own 'count'  
-console.log(counterA()); // 1  
-console.log(counterA()); // 2  
+const counterA = createCounter(0); // each call creates its own closure with its own 'count'
+const counterB = createCounter(10);
 
-const counterB = makeCounter();        // a separate closure, independent of counterA  
-console.log(counterB()); // 1  
-console.log(counterA()); // 3   // counterA's closure continues from where it left off  
+counterA(1); // Current count: 1
+counterA(2); // Current count: 3
+counterB(5); // Current count: 15
+counterA(3); // Current count: 6   (counterA's count is independent of counterB)
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
+Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
 
 Explanation:  
-Few‑shot prompting supplies the model with a handful of example input‑output pairs to steer its behavior without fine‑tuning. By embedding clear demonstrations in the user message, the model infers the desired pattern and applies it to new queries. This technique works well for tasks such as classification, transformation, or generating structured data. The prompt should be concise, consistently formatted, and include a delimiter separating examples from the actual request. Adjusting temperature to a low value (e.g., 0.2) helps the model follow the demonstrated format more reliably.  
+1. Few‑shot prompting supplies a small number of example input‑output pairs inside the prompt to guide the model’s behavior without fine‑tuning.  
+2. The technique works well for tasks like text classification, data extraction, or code generation where labeled data are scarce.  
+3. By carefully formatting examples and using clear separators, you reduce ambiguity and improve consistency across responses.  
+4. The OpenAI chat API accepts a list of messages; the system message sets the role, while user‑assistant pairs provide the demonstration examples.  
+5. Adjusting temperature, max_tokens, and stop sequences helps control creativity and ensures the model stops after producing the desired output.  
 
-Code example (Python, using the openai library):  
+Code example (Python, using the openai package):  
 
 import openai  
 
-# Set your API key – replace with your actual key or use environment variable  
-openai.api_key = "sk-YOUR_API_KEY"  
+# Set your API key (replace with your actual key or use environment variable)  
+openai.api_key = "YOUR_API_KEY"  
 
-# Define a few‑shot prompt with two labeled examples for sentiment analysis  
-few_shot_prompt = """\
-Task: Determine the sentiment of a product review. Respond with "Positive", "Negative", or "Neutral".  
+# Define a system prompt that explains the overall task  
+system_msg = {  
+    "role": "system",  
+    "content": "You are a helpful assistant that extracts the product name and price from a short e‑commerce description."  
+}  
 
-Example 1:  
-Review: "The battery life lasts forever and the screen is crystal clear."  
-Sentiment: Positive  
+# Provide two few‑shot examples as user‑assistant pairs  
+example_user_1 = {  
+    "role": "user",  
+    "content": "Description: \"Sleek stainless steel water bottle, 500 ml, keeps drinks cold for 24 h. Price: $19.99.\""}  
 
-Example 2:  
-Review: "It stopped working after a week; very disappointed."  
-Sentiment: Negative  
+example_assistant_1 = {  
+    "role": "assistant",  
+    "content": "Product: water bottle\nPrice: 19.99"}  
 
-Now classify the following review:  
-Review: "The packaging was okay, but the performance is just average."  
-Sentiment:"""  
+example_user_2 = {  
+    "role": "user",  
+    "content": "Description: \"Organic cotton t‑shirt, size M, soft breathable fabric. Only $27.\""}  
+
+example_assistant_2 = {  
+    "role": "assistant",  
+    "content": "Product: t‑shirt\nPrice: 27"}  
+
+# New query for which we want the model to produce the same format  
+new_query = {  
+    "role": "user",  
+    "content": "Description: \"Bluetooth wireless earbuds with noise cancellation, 30 h battery life. Cost: $89.\""}  
+
+# Assemble the message list in order  
+messages = [system_msg, example_user_1, example_assistant_1, example_user_2, example_assistant_2, new_query]  
 
 # Call the Chat Completion endpoint  
 response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",  
-    messages=[{"role": "user", "content": few_shot_prompt}],  
-    temperature=0.2,          # low temperature for deterministic output  
-    max_tokens=10             # limit to short answer  
-)  
+    model="gpt-4o-mini",        # choose a suitable model  
+    messages=messages,  
+    temperature=0,              # deterministic output for extraction tasks  
+    max_tokens=50,  
+    stop=None)  
 
-# Extract and print the model's answer  
-answer = response.choices[0].message.content.strip()  
-print("Predicted Sentiment:", answer)  
+# Print the extracted result  
+print(response.choices[0].message.content.strip())   # Expected: "Product: earbuds\nPrice: 89"  
 */
 
