@@ -1,259 +1,236 @@
 <?php
-// 2026-09-26 06:23:07
+// 2026-09-28 07:17:47
 
 /* PHP
-Topic: PHP PDO and Prepared Statements  
+Topic: Prepared Statements with PDO (PHP Data Objects)
 
-Explanation:  
-PDO (PHP Data Objects) provides a consistent interface for accessing many different databases.  
-Using prepared statements with PDO helps prevent SQL injection by separating query structure from data.  
-You can bind parameters by name or position, allowing the database driver to handle proper escaping.  
-PDO also supports transactions, making it easy to commit or roll back a group of operations.  
-Error handling with PDO can be configured to throw exceptions, simplifying debugging.
+Explanation:
+Prepared statements separate the SQL query structure from its data values, allowing the database engine to compile the query once and reuse it safely with different parameters. This approach prevents SQL injection because user‑supplied values are never concatenated directly into the query string. PDO provides a uniform interface for many databases, making the code portable across MySQL, PostgreSQL, SQLite, etc. Binding parameters can be done by position or by name, and the driver handles proper quoting and escaping. Using prepared statements also improves performance when the same statement is executed repeatedly within a loop.
 
-Code example with comments:  
+Code example with comments:
 <?php
-// Create a new PDO instance for a MySQL database
+// Create a PDO connection (replace DSN, username, password with your own values)
 $dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
 $username = 'dbuser';
-$password = 'dbpass';
+$password = 'secret';
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch rows as associative arrays
+];
+$pdo = new PDO($dsn, $username, $password, $options);
 
-try {
-    $pdo = new PDO($dsn, $username, $password);
-    // Set error mode to exceptions for easier debugging
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch (PDOException $e) {
-    die('Connection failed: ' . $e->getMessage());
-}
+// Define the SQL with named placeholders
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:user, :mail, :created)';
 
-// Prepare an INSERT statement with named placeholders
-$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
+// Prepare the statement once
 $stmt = $pdo->prepare($sql);
 
-// Bind values to the placeholders
-$stmt->bindValue(':username', 'alice');
-$stmt->bindValue(':email', 'alice@example.com');
+// Example data that might come from a form or API
+$data = [
+    ['user' => 'alice',   'mail' => 'alice@example.com',   'created' => date('Y-m-d H:i:s')],
+    ['user' => 'bob',     'mail' => 'bob@example.org',     'created' => date('Y-m-d H:i:s')],
+    ['user' => 'charlie', 'mail' => 'charlie@sample.net', 'created' => date('Y-m-d H:i:s')],
+];
 
-// Execute the prepared statement
-if ($stmt->execute()) {
-    echo 'New user inserted with ID: ' . $pdo->lastInsertId();
-} else {
-    echo 'Insert failed.';
+// Loop over the data and execute the prepared statement with bound values
+foreach ($data as $row) {
+    // bindValue can be used, but passing the array to execute is shorter
+    $stmt->execute([
+        ':user'    => $row['user'],
+        ':mail'    => $row['mail'],
+        ':created' => $row['created'],
+    ]);
 }
 
-// Example of a SELECT using positional placeholders
-$sqlSelect = 'SELECT id, username, email FROM users WHERE id > ?';
-$stmtSelect = $pdo->prepare($sqlSelect);
-$stmtSelect->execute([0]);
-
-// Fetch all matching rows as an associative array
-$users = $stmtSelect->fetchAll(PDO::FETCH_ASSOC);
-foreach ($users as $user) {
-    echo $user['id'] . ': ' . $user['username'] . ' (' . $user['email'] . ')' . PHP_EOL;
-}
+// Verify insertion (optional)
+echo "Inserted " . count($data) . " rows successfully.\n";
 ?>
 */
 
 /* Laravel
-Laravel Topic: Service Container & Dependency Injection  
+Laravel Service Container & Dependency Injection
 
-Explanation:  
-The Laravel service container is a powerful tool that manages class dependencies and performs automatic resolution. It allows you to bind abstractions (interfaces) to concrete implementations, making your code more testable and loosely coupled. When a class is resolved from the container, Laravel inspects its constructor and injects the required dependencies automatically. This mechanism underpins most of Laravel’s features, including controller injection, event listeners, and job handling. By mastering the container, you can customize how objects are built and swap implementations without changing the consuming code.
+The Laravel service container is a powerful tool for managing class dependencies and performing dependency injection automatically. It resolves classes, interfaces, and their dependencies at runtime, allowing you to decouple components and write testable code. By binding abstractions to concrete implementations, you can swap out services without changing the consuming code. The container also supports contextual bindings, singleton bindings, and automatic resolution of primitive dependencies. Understanding the service container is essential for building maintainable Laravel applications.
 
-Code example (binding an interface and injecting it into a controller):
+Example – binding an interface to a concrete class and injecting it into a controller:
 
+// app/Contracts/PaymentGateway.php
+<?php
+namespace App\Contracts;
+interface PaymentGateway {
+    public function charge(float $amount);
+}
+
+// app/Services/StripeGateway.php
+<?php
+namespace App\Services;
+use App\Contracts\PaymentGateway;
+class StripeGateway implements PaymentGateway {
+    public function charge(float $amount) {
+        // Logic to process payment via Stripe API
+        return "Charged $$amount using Stripe.";
+    }
+}
+
+// app/Providers/AppServiceProvider.php
 <?php
 namespace App\Providers;
-
 use Illuminate\Support\ServiceProvider;
 use App\Contracts\PaymentGateway;
-use App\Services\StripePaymentGateway;
-
-class AppServiceProvider extends ServiceProvider
-{
-    public function register()
-    {
-        // Bind the PaymentGateway contract to the Stripe implementation
-        $this->app->bind(PaymentGateway::class, function ($app) {
-            // You could pull configuration values here if needed
-            return new StripePaymentGateway(config('services.stripe.secret'));
-        });
+use App\Services\StripeGateway;
+class AppServiceProvider extends ServiceProvider {
+    public function register() {
+        // Bind the interface to the concrete implementation
+        $this->app->bind(PaymentGateway::class, StripeGateway::class);
     }
 }
 
-namespace App\Contracts;
-
-interface PaymentGateway
-{
-    public function charge(float $amount, string $currency, array $metadata = []);
-}
-
-namespace App\Services;
-
-use App\Contracts\PaymentGateway;
-use Stripe\StripeClient;
-
-class StripePaymentGateway implements PaymentGateway
-{
-    protected $stripe;
-
-    public function __construct(string $secretKey)
-    {
-        // Initialise the Stripe SDK client
-        $this->stripe = new StripeClient($secretKey);
-    }
-
-    public function charge(float $amount, string $currency, array $metadata = [])
-    {
-        // Create a charge using Stripe's API
-        return $this->stripe->charges->create([
-            'amount' => $amount * 100, // amount in cents
-            'currency' => $currency,
-            'metadata' => $metadata,
-            // In a real app you would also pass a source or customer ID
-        ]);
-    }
-}
-
+// app/Http/Controllers/OrderController.php
+<?php
 namespace App\Http\Controllers;
-
 use App\Contracts\PaymentGateway;
-use Illuminate\Http\Request;
-
-class PaymentController extends Controller
-{
-    protected $gateway;
-
-    // Laravel automatically injects the bound implementation
-    public function __construct(PaymentGateway $gateway)
-    {
-        $this->gateway = $gateway;
+class OrderController extends Controller {
+    protected $paymentGateway;
+    // Laravel automatically injects the concrete class bound to PaymentGateway
+    public function __construct(PaymentGateway $paymentGateway) {
+        $this->paymentGateway = $paymentGateway;
     }
-
-    public function charge(Request $request)
-    {
-        $amount = $request->input('amount');
-        $currency = $request->input('currency', 'USD');
-
-        // Use the injected gateway to perform the charge
-        $result = $this->gateway->charge($amount, $currency, ['order_id' => $request->input('order_id')]);
-
-        return response()->json($result);
+    public function store() {
+        $amount = 99.99;
+        // Use the injected service to charge the amount
+        $result = $this->paymentGateway->charge($amount);
+        return response()->json(['message' => $result]);
     }
 }
 */
 
 /* MySQL
-Topic Name: Common Table Expressions (CTEs) and Recursive Queries  
+Topic: MySQL Common Table Expressions (CTE) and Recursive Queries
 
-Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs are defined using the WITH clause and improve readability by allowing you to break complex queries into logical building blocks.  
-MySQL supports both non‑recursive and recursive CTEs; the latter can be used to walk hierarchical data such as organization charts or tree structures.  
-Recursive CTEs consist of an anchor member (the starting rows) and a recursive member that repeatedly references the CTE itself until a termination condition is met.  
-They are evaluated in a single execution plan, which can be more efficient than using procedural loops or multiple temporary tables.  
+Explanation:
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. CTEs are defined using the WITH clause and improve query readability by allowing you to break complex logic into named subqueries. MySQL supports both non‑recursive and recursive CTEs, enabling hierarchical data processing such as organization charts or bill‑of‑materials. Recursive CTEs repeatedly execute a union of an anchor query and a recursive query until no new rows are produced. This feature eliminates the need for stored procedures or client‑side loops for many hierarchical tasks.
 
-Code Example (generating numbers 1 through 10 with a recursive CTE):  
+Code example (recursive CTE to list an employee hierarchy):
 
-WITH RECURSIVE numbers AS (  
-    -- Anchor member: start with the first number  
-    SELECT 1 AS n  
-    UNION ALL  
-    -- Recursive member: add 1 to the previous number while less than 10  
-    SELECT n + 1  
-    FROM numbers  
-    WHERE n < 10  
-)  
-SELECT n  
-FROM numbers;  
+-- Define the CTE named employee_hierarchy
+WITH RECURSIVE employee_hierarchy AS (
+    -- Anchor member: start with the top‑level manager (e.g., employee_id = 1)
+    SELECT 
+        employee_id,
+        manager_id,
+        employee_name,
+        1 AS level
+    FROM employees
+    WHERE manager_id IS NULL          -- top‑level has no manager
+
+    UNION ALL
+
+    -- Recursive member: join each manager to their direct reports
+    SELECT 
+        e.employee_id,
+        e.manager_id,
+        e.employee_name,
+        eh.level + 1 AS level
+    FROM employees e
+    INNER JOIN employee_hierarchy eh
+        ON e.manager_id = eh.employee_id
+)
+-- Query the CTE to retrieve the full hierarchy ordered by level
+SELECT 
+    employee_id,
+    manager_id,
+    employee_name,
+    level
+FROM employee_hierarchy
+ORDER BY level, manager_id, employee_id;
 */
 
 /* JavaScript
-Topic: JavaScript Closures
+Topic: Closures in JavaScript
 
 Explanation:
-A closure is a function that retains access to the variables from its outer (enclosing) scope even after that outer function has finished executing.  
-Closures enable data privacy, allowing you to expose only the functions you want while keeping internal state hidden.  
-They are created each time a function is defined, capturing the current lexical environment.  
-Common use cases include factories, module patterns, and callbacks that need persistent state.  
-Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state across invocations.
+- A closure is a function that retains access to its lexical scope even when that function is executed outside of its original context.  
+- It allows inner functions to reference variables declared in an outer function after the outer function has finished executing.  
+- Closures are created automatically every time a function is defined, and they are essential for data encapsulation and creating private state.  
+- They enable patterns such as function factories, memoization, and module-like structures without using classes.  
+- Understanding closures helps avoid common pitfalls like unintentionally sharing mutable variables across multiple invocations.
 
-Code Example (with comments):
-function createCounter(initialValue) {          // outer function defines a private variable
-    let count = initialValue;                  // this variable is captured by the inner function
-
-    return function increment(step) {          // the returned function forms a closure
-        count += step;                         // it can read and modify 'count' each call
-        console.log('Current count:', count); // displays the updated count
+Code example with comments:
+function makeCounter() {                 // outer function creates a private variable
+    let count = 0;                       // this variable is captured by the inner function
+    return function() {                 // the inner function forms a closure over count
+        count++;                         // modify the private variable
+        console.log('Current count:', count); // display the updated value
     };
 }
+const counterA = makeCounter();           // each call gets its own closure
+const counterB = makeCounter();
 
-const counterA = createCounter(0); // each call creates its own closure with its own 'count'
-const counterB = createCounter(10);
-
-counterA(1); // Current count: 1
-counterA(2); // Current count: 3
-counterB(5); // Current count: 15
-counterA(3); // Current count: 6   (counterA's count is independent of counterB)
+counterA(); // Current count: 1
+counterA(); // Current count: 2
+counterB(); // Current count: 1   (separate private count)
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
+Topic: Prompt Engineering for Few‑Shot Learning with the OpenAI Chat Completion API  
 
 Explanation:  
-1. Few‑shot prompting supplies a small number of example input‑output pairs inside the prompt to guide the model’s behavior without fine‑tuning.  
-2. The technique works well for tasks like text classification, data extraction, or code generation where labeled data are scarce.  
-3. By carefully formatting examples and using clear separators, you reduce ambiguity and improve consistency across responses.  
-4. The OpenAI chat API accepts a list of messages; the system message sets the role, while user‑assistant pairs provide the demonstration examples.  
-5. Adjusting temperature, max_tokens, and stop sequences helps control creativity and ensures the model stops after producing the desired output.  
+Few‑shot prompting lets a language model infer a new task from a handful of examples embedded directly in the prompt. By carefully structuring the system message and user examples, you can guide the model to produce consistent, high‑quality outputs without fine‑tuning. The technique works well for classification, transformation, or extraction tasks where labeled data is scarce. Include clear delimiters and explicit instructions so the model knows where examples end and the new query begins. Adjust temperature and max_tokens to balance creativity and determinism for reliable results.  
 
-Code example (Python, using the openai package):  
+Code example (Python, using the openai library):  
 
+import os  
 import openai  
 
-# Set your API key (replace with your actual key or use environment variable)  
-openai.api_key = "YOUR_API_KEY"  
+# Load your API key from an environment variable or configuration file  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Define a system prompt that explains the overall task  
-system_msg = {  
-    "role": "system",  
-    "content": "You are a helpful assistant that extracts the product name and price from a short e‑commerce description."  
-}  
+# Define the system prompt that sets the role and style of the assistant  
+system_prompt = """You are a helpful assistant that extracts the product name and price from a customer email.  
+Return the result as a JSON object with keys "product" and "price".  
+If the price is not mentioned, set its value to null."""  
 
-# Provide two few‑shot examples as user‑assistant pairs  
-example_user_1 = {  
-    "role": "user",  
-    "content": "Description: \"Sleek stainless steel water bottle, 500 ml, keeps drinks cold for 24 h. Price: $19.99.\""}  
+# Provide two few‑shot examples that demonstrate the desired output format  
+few_shot_examples = [  
+    {  
+        "role": "user",  
+        "content": "Hi, I would like to order the UltraWidget. Please charge me $49.99."  
+    },  
+    {  
+        "role": "assistant",  
+        "content": '{ "product": "UltraWidget", "price": 49.99 }'  
+    },  
+    {  
+        "role": "user",  
+        "content": "Can you send me the MegaGadget? I need it asap."  
+    },  
+    {  
+        "role": "assistant",  
+        "content": '{ "product": "MegaGadget", "price": null }'  
+    }  
+]  
 
-example_assistant_1 = {  
-    "role": "assistant",  
-    "content": "Product: water bottle\nPrice: 19.99"}  
-
-example_user_2 = {  
-    "role": "user",  
-    "content": "Description: \"Organic cotton t‑shirt, size M, soft breathable fabric. Only $27.\""}  
-
-example_assistant_2 = {  
-    "role": "assistant",  
-    "content": "Product: t‑shirt\nPrice: 27"}  
-
-# New query for which we want the model to produce the same format  
+# New user query that the model must handle using the pattern above  
 new_query = {  
     "role": "user",  
-    "content": "Description: \"Bluetooth wireless earbuds with noise cancellation, 30 h battery life. Cost: $89.\""}  
+    "content": "Please add the NanoDevice to my cart. It's $12.5."  
+}  
 
-# Assemble the message list in order  
-messages = [system_msg, example_user_1, example_assistant_1, example_user_2, example_assistant_2, new_query]  
+# Assemble the full message list: system prompt, few‑shot pairs, then the new query  
+messages = [ {"role": "system", "content": system_prompt} ] + few_shot_examples + [new_query]  
 
-# Call the Chat Completion endpoint  
+# Call the chat completion endpoint with low temperature for deterministic output  
 response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",        # choose a suitable model  
+    model="gpt-4o-mini",        # choose a model that supports chat  
     messages=messages,  
-    temperature=0,              # deterministic output for extraction tasks  
-    max_tokens=50,  
-    stop=None)  
+    temperature=0.0,            # deterministic results  
+    max_tokens=100,  
+    top_p=1.0,  
+    n=1                         # single best completion  
+)  
 
-# Print the extracted result  
-print(response.choices[0].message.content.strip())   # Expected: "Product: earbuds\nPrice: 89"  
+# Extract and print the assistant's reply  
+assistant_reply = response.choices[0].message.content  
+print("Extracted JSON:", assistant_reply)  
 */
 
