@@ -1,237 +1,261 @@
 <?php
-// 2026-09-29 07:14:20
+// 2026-09-30 07:05:29
 
 /* PHP
-Topic: Prepared Statements with PDO (PHP Data Objects)
+PHP Topic: Traits
 
 Explanation:
-Prepared statements allow you to execute the same SQL query multiple times with different parameters while keeping the query structure separate from the data. This separation prevents SQL injection because user‑supplied values are bound to placeholders rather than concatenated into the query string. PDO provides a uniform API for many databases, making your code portable across MySQL, PostgreSQL, SQLite, etc. You first prepare the statement, then bind values (or pass an array), and finally execute it. Errors can be caught with exceptions, giving you fine‑grained control over failure handling.
+Traits are a mechanism for code reuse in single inheritance languages like PHP. They allow you to group methods that can be included in multiple classes, avoiding duplication. A trait can contain properties, methods, and even abstract method declarations. Classes use the `use` keyword to incorporate a trait, and they can resolve method name conflicts with the `insteadof` and `as` operators. Traits are especially useful for sharing functionality across unrelated class hierarchies.
 
 Code Example:
-// Connect to the database using PDO
-$dsn = 'mysql:host=localhost;dbname=example_db;charset=utf8mb4';
-$username = 'db_user';
-$password = 'secure_pass';
+<?php
+// Define a trait with reusable methods
+trait Logger {
+    // Log a message with a timestamp
+    public function log(string $message) {
+        echo "[" . date('Y-m-d H:i:s') . "] " . $message . PHP_EOL;
+    }
 
-try {
-    // Enable exceptions for error handling
-    $pdo = new PDO($dsn, $username, $password, [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]);
-
-    // Prepare an INSERT statement with named placeholders
-    $stmt = $pdo->prepare(
-        'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())'
-    );
-
-    // Sample data to insert
-    $data = [
-        ':username' => 'alice',
-        ':email'    => 'alice@example.com',
-    ];
-
-    // Execute the statement with the bound parameters
-    $stmt->execute($data);
-
-    echo 'User inserted with ID: ' . $pdo->lastInsertId();
-} catch (PDOException $e) {
-    // Handle any errors (e.g., connection issues, query failures)
-    echo 'Database error: ' . $e->getMessage();
+    // Helper method to format messages
+    protected function formatMessage(string $level, string $msg) {
+        return strtoupper($level) . ": " . $msg;
+    }
 }
+
+// First class using the Logger trait
+class User {
+    use Logger; // include the Logger trait
+
+    public function create(string $username) {
+        // Perform user creation logic here...
+        $this->log($this->formatMessage('info', "User '{$username}' created."));
+    }
+}
+
+// Second class also using the Logger trait
+class Order {
+    use Logger; // include the same Logger trait
+
+    public function place(int $orderId) {
+        // Perform order placement logic here...
+        $this->log($this->formatMessage('success', "Order #{$orderId} placed successfully."));
+    }
+}
+
+// Demonstration
+$user = new User();
+$user->create('alice');
+
+$order = new Order();
+$order->place(12345);
+?>
 */
 
 /* Laravel
-Laravel Service Container & Dependency Injection  
+Topic: Laravel Service Container & Dependency Injection
 
-The service container is the central piece of Laravel’s inversion of control system. It manages class dependencies and performs automatic resolution of objects. By binding abstractions to concrete implementations, you can easily swap implementations without changing consuming code. Dependency injection lets you type‑hint classes in constructors or methods, and Laravel will automatically provide the resolved instance. This pattern promotes testability, loose coupling, and cleaner architecture throughout your application.  
+Explanation:  
+The Laravel service container is a powerful tool for managing class dependencies and performing dependency injection automatically. It resolves objects by inspecting constructor type hints and injecting the required instances, which promotes loose coupling and easier testing. You can bind abstractions to concrete implementations, configure singleton instances, and even use contextual bindings for specific scenarios. The container is accessed via the app() helper or the resolve() method, making it simple to retrieve resolved objects anywhere in your application. Understanding the container is essential for building maintainable, testable Laravel services and repositories.
 
-<?php  
+Code example (PHP):
 
-namespace App\Providers;  
+<?php
+// Define an interface for a payment gateway
+interface PaymentGatewayContract {
+    public function charge(float $amount);
+}
 
-use Illuminate\Support\ServiceProvider;  
-use App\Contracts\PaymentGateway;  
-use App\Services\StripePaymentGateway;  
+// Concrete implementation for Stripe
+class StripeGateway implements PaymentGatewayContract {
+    public function charge(float $amount) {
+        // Simulated charge logic
+        return "Charged \${$amount} using Stripe.";
+    }
+}
 
-class AppServiceProvider extends ServiceProvider  
-{  
-    public function register()  
-    {  
-        // Bind the interface to a concrete class in the container  
-        $this->app->bind(PaymentGateway::class, StripePaymentGateway::class);  
-    }  
+// Concrete implementation for PayPal
+class PayPalGateway implements PaymentGatewayContract {
+    public function charge(float $amount) {
+        // Simulated charge logic
+        return "Charged \${$amount} using PayPal.";
+    }
+}
 
-    public function boot()  
-    {  
-        //   
-    }  
-}  
+// Service provider where bindings are registered
+class AppServiceProvider extends Illuminate\Support\ServiceProvider {
+    public function register() {
+        // Bind the interface to a concrete class (default to Stripe)
+        $this->app->bind(PaymentGatewayContract::class, StripeGateway::class);
 
-<?php  
+        // Example of a singleton binding
+        $this->app->singleton('logger', function ($app) {
+            return new Monolog\Logger('app');
+        });
 
-namespace App\Contracts;  
+        // Contextual binding: when OrderProcessor needs PaymentGatewayContract, give PayPalGateway
+        $this->app->when(OrderProcessor::class)
+                  ->needs(PaymentGatewayContract::class)
+                  ->give(PayPalGateway::class);
+    }
+}
 
-interface PaymentGateway  
-{  
-    // Define a contract for processing payments  
-    public function charge(float $amount, string $currency);  
-}  
+// A class that depends on the payment gateway via constructor injection
+class OrderProcessor {
+    protected $gateway;
 
-<?php  
+    // Laravel will automatically inject the appropriate implementation
+    public function __construct(PaymentGatewayContract $gateway) {
+        $this->gateway = $gateway;
+    }
 
-namespace App\Services;  
+    public function process(float $amount) {
+        // Use the injected gateway to charge the amount
+        return $this->gateway->charge($amount);
+    }
+}
 
-use App\Contracts\PaymentGateway;  
+// Resolving the OrderProcessor from the container
+$orderProcessor = app(OrderProcessor::class);
+echo $orderProcessor->process(99.99); // Outputs: Charged $99.99 using PayPal.
 
-class StripePaymentGateway implements PaymentGateway  
-{  
-    // Implement the charge method using Stripe’s SDK (pseudo‑code)  
-    public function charge(float $amount, string $currency)  
-    {  
-        // Here you would call Stripe’s API to create a charge  
-        // return Stripe::charge([...]);  
-        return "Charged {$amount} {$currency} via Stripe";  
-    }  
-}  
-
-<?php  
-
-namespace App\Http\Controllers;  
-
-use App\Contracts\PaymentGateway;  
-
-class OrderController extends Controller  
-{  
-    protected $paymentGateway;  
-
-    // Laravel automatically injects the concrete implementation  
-    public function __construct(PaymentGateway $paymentGateway)  
-    {  
-        $this->paymentGateway = $paymentGateway;  
-    }  
-
-    public function store()  
-    {  
-        // Use the injected service to process a payment  
-        $result = $this->paymentGateway->charge(99.99, 'USD');  
-
-        // Handle the result (e.g., save order, return response)  
-        return response()->json(['message' => $result]);  
-    }  
-}  
+// Directly resolving a bound singleton
+$logger = resolve('logger');
+$logger->info('Order processed successfully.');
 */
 
 /* MySQL
-Topic: Using Prepared Statements with Parameter Binding in MySQL
+Topic: Common Table Expressions (CTE) and Recursive Queries
 
 Explanation:
-Prepared statements allow the database server to parse, optimize, and cache the execution plan of a query once, then reuse it many times with different input values. This improves performance for repetitive operations and protects against SQL injection by separating code from data. In MySQL, you can prepare a statement with placeholders (?), bind values to those placeholders, and then execute the statement repeatedly. After finishing, the statement should be deallocated to free resources. The approach works with the MySQL command‑line client, scripts, or any programming language that supports the MySQL C API or connectors.
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs improve readability by allowing you to break complex queries into logical building blocks.  
+They are defined using the WITH clause and can be recursive, enabling hierarchical data traversal such as organizational charts or tree structures.  
+Recursive CTEs consist of an anchor member (the base case) and a recursive member that references the CTE itself.  
+MySQL supports both non‑recursive and recursive CTEs starting from version 8.0.
 
-Code example (MySQL client syntax):
--- Create a sample table
-CREATE TABLE IF NOT EXISTS users (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL,
-    email VARCHAR(100) NOT NULL
+Code example (recursive CTE to list an employee hierarchy):
+/* Sample table */
+CREATE TABLE employees (
+    emp_id INT PRIMARY KEY,
+    emp_name VARCHAR(50),
+    manager_id INT NULL   -- references emp_id of the manager
 );
 
--- Prepare the INSERT statement with placeholders
-PREPARE stmt_insert FROM 'INSERT INTO users (username, email) VALUES (?, ?)';
+/* Insert sample data */
+INSERT INTO employees (emp_id, emp_name, manager_id) VALUES
+(1, 'Alice', NULL),   -- top‑level manager
+(2, 'Bob', 1),
+(3, 'Carol', 1),
+(4, 'David', 2),
+(5, 'Eve', 2);
 
--- First execution: bind actual values and execute
-SET @u1 = 'alice';
-SET @e1 = 'alice@example.com';
-EXECUTE stmt_insert USING @u1, @e1;
+/* Recursive CTE to retrieve the hierarchy starting from Alice (emp_id = 1) */
+WITH RECURSIVE emp_hierarchy AS (
+    -- Anchor member: start with the top manager
+    SELECT emp_id, emp_name, manager_id, 0 AS level
+    FROM employees
+    WHERE emp_id = 1
 
--- Second execution: reuse the same prepared statement with different data
-SET @u2 = 'bob';
-SET @e2 = 'bob@example.org';
-EXECUTE stmt_insert USING @u2, @e2;
+    UNION ALL
 
--- Verify the inserted rows
-SELECT * FROM users;
-
--- Clean up: deallocate the prepared statement
-DEALLOCATE PREPARE stmt_insert;
+    -- Recursive member: find direct reports of the previous level
+    SELECT e.emp_id, e.emp_name, e.manager_id, eh.level + 1
+    FROM employees e
+    INNER JOIN emp_hierarchy eh ON e.manager_id = eh.emp_id
+)
+SELECT emp_id,
+       emp_name,
+       manager_id,
+       REPEAT('  ', level) || emp_name AS hierarchy_path
+FROM emp_hierarchy
+ORDER BY level, emp_id;
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: Closures in JavaScript  
 
-Explanation:
-A closure is a function that retains access to the variables from its lexical scope even after that outer function has finished executing.  
-Closures enable data encapsulation, allowing you to create private state that cannot be reached from outside the function.  
-They are created every time a function is defined, capturing the surrounding environment at that moment.  
-Common uses include factories, memoization, and implementing modules without exposing internal variables.  
-Understanding closures is essential for mastering asynchronous patterns and functional programming in JavaScript.  
+Explanation:  
+A closure is a function that retains access to its lexical scope even when that function is executed outside of its original context.  
+Closures allow inner functions to read variables from outer functions after the outer function has finished executing.  
+They are useful for data encapsulation, creating private variables, and implementing function factories.  
+Understanding closures helps avoid common pitfalls with variable sharing in asynchronous code and loops.  
+Because the closed‑over variables live on the heap, they remain in memory as long as any reference to the closure exists.  
 
-Code Example (with comments):
-function makeCounter() {                // Outer function creates a private variable
-    let count = 0;                     // This variable is not accessible from the outside
-    return function() {               // The inner function forms a closure over 'count'
-        count++;                       // It can read and modify the private variable
-        console.log('Current count:', count); // Output the current value
-    };
-}
-const counter = makeCounter();          // 'counter' now holds the inner function
-counter(); // Current count: 1           // First call, count becomes 1
-counter(); // Current count: 2           // Second call, count becomes 2
-counter(); // Current count: 3           // Subsequent calls continue to update the private state  
+Code example with comments:  
+function createCounter(initialValue) {          // outer function that defines a private variable  
+    let count = initialValue;                  // this variable is captured by the inner function  
+
+    return function increment(step = 1) {     // inner function forms a closure over 'count'  
+        count += step;                         // modifies the private variable  
+        console.log('Current count:', count); // demonstrates that state is preserved  
+        return count;                          // returns the updated count  
+    };                                          // end of inner function  
+
+}                                               // end of outer function  
+
+// Usage:  
+const counter = createCounter(10);  // 'counter' now holds the closure with its own 'count'  
+
+counter();        // Current count: 11  
+counter(5);       // Current count: 16  
+counter();        // Current count: 17  
+
+// Each call to createCounter produces an independent closure with its own private 'count' variable.
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering for Large Language Models  
+Topic: Parameter-Efficient Fine‑Tuning of a Language Model with LoRA (Low‑Rank Adaptation)
 
 Explanation:  
-Few‑shot prompting supplies a small number of example input–output pairs within the same request, guiding the model toward the desired response style. It is useful when you cannot fine‑tune a model but need consistent formatting, classification, or transformation. By carefully selecting diverse yet representative examples, the model learns the pattern and applies it to new queries. This technique works across many tasks such as code generation, summarization, or data extraction. Be aware that too many examples increase token cost and can dilute the signal if examples are noisy.  
+LoRA adds trainable low‑rank matrices to the weight tensors of a frozen pretrained model, allowing efficient adaptation with far fewer parameters. It keeps the original model unchanged, so inference remains fast and memory‑efficient. This approach is especially useful for developers who need custom behavior without the cost of full fine‑tuning. Using the Hugging Face Transformers and PEFT libraries, you can apply LoRA to models like Llama‑2 or Mistral in just a few lines of code. The method works for tasks such as classification, summarization, or instruction following, and the resulting adapter can be shared or re‑loaded independently of the base model.
 
-Code example (Python, OpenAI Chat Completion API):  
+Code example (Python):
 
-import os, json  
-import openai  
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import LoraConfig, get_peft_model, prepare_model_for_int8_training
 
-# Set your API key – keep it secure!  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Load a pretrained causal language model and its tokenizer
+model_name = "meta-llama/Llama-2-7b-hf"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto", torch_dtype=torch.float16)
 
-# System message defines the assistant’s role  
-system_msg = {"role": "system", "content": "You are a helpful assistant that converts plain English descriptions of arithmetic operations into Python code."}  
+# Optional: convert model to 8‑bit for lower GPU memory usage
+model = prepare_model_for_int8_training(model)
 
-# Few‑shot examples: each example consists of a user query and the assistant’s ideal response  
-example_1 = {  
-    "role": "user",  
-    "content": "Add the numbers 12 and 7 together."  
-}  
-response_1 = {  
-    "role": "assistant",  
-    "content": "result = 12 + 7"  
-}  
+# Define LoRA configuration: rank r=8, alpha scaling, target modules to adapt
+lora_cfg = LoraConfig(
+    r=8,
+    lora_alpha=16,
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],  # attention projections
+    lora_dropout=0.05,
+    bias="none",
+    task_type="CAUSAL_LM"
+)
 
-example_2 = {  
-    "role": "user",  
-    "content": "Multiply 5 by 9 and subtract 3."  
-}  
-response_2 = {  
-    "role": "assistant",  
-    "content": "result = (5 * 9) - 3"  
-}  
+# Wrap the base model with LoRA adapters
+model = get_peft_model(model, lora_cfg)
 
-# New user request we want the model to answer in the same style  
-new_query = {"role": "user", "content": "Divide 100 by 4 and then add 15."}  
+# Example training loop (single batch for illustration)
+inputs = tokenizer("Explain quantum entanglement in simple terms.", return_tensors="pt").to(model.device)
+labels = inputs.input_ids.clone()  # language modeling objective
+outputs = model(input_ids=inputs.input_ids, labels=labels)
+loss = outputs.loss
+loss.backward()
+torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+# optimizer step (optimizer defined elsewhere)
+# optimizer.step()
+# optimizer.zero_grad()
 
-# Assemble the message list: system prompt, examples, and the new query  
-messages = [system_msg, example_1, response_1, example_2, response_2, new_query]  
+# Save only the LoRA adapter weights
+model.save_pretrained("lora_llama2_adapter")
+tokenizer.save_pretrained("lora_llama2_adapter")
 
-# Call the API with a temperature of 0 for deterministic output  
-response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",  
-    messages=messages,  
-    temperature=0  
-)  
-
-# Extract and print the generated code snippet  
-generated_code = response["choices"][0]["message"]["content"]  
-print("Generated Python code:")  
-print(generated_code)  
+# Inference with the fine‑tuned adapter
+model.eval()
+prompt = "What are the health benefits of regular exercise?"
+input_ids = tokenizer(prompt, return_tensors="pt").to(model.device).input_ids
+generated_ids = model.generate(input_ids, max_new_tokens=100, do_sample=True, temperature=0.7)
+print(tokenizer.decode(generated_ids[0], skip_special_tokens=True))
 */
 
