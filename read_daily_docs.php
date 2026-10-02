@@ -1,243 +1,225 @@
 <?php
-// 2026-10-01 07:29:20
+// 2026-10-02 06:40:10
 
 /* PHP
-Topic: PHP Traits
+Topic: Prepared Statements with PDO  
 
-Explanation:
-Traits in PHP allow you to reuse sets of methods across multiple unrelated classes, overcoming the limitations of single inheritance. A trait is defined with the keyword trait and can contain both methods and properties. Classes incorporate a trait using the use statement, which effectively copies the trait's code into the class. If a class already defines a method with the same name as one in the trait, the class’s method takes precedence, but you can resolve conflicts with insteadof and as aliases. Traits are especially useful for sharing common functionality like logging, serialization, or helper utilities without creating deep inheritance hierarchies.
+Explanation:  
+Prepared statements separate SQL code from data, preventing SQL injection attacks.  
+The PDO (PHP Data Objects) extension provides a consistent interface for many databases.  
+You first prepare the SQL query with placeholders, then bind values and execute it.  
+PDO also allows you to fetch results in various formats (objects, associative arrays, etc.).  
+Using prepared statements improves performance when the same query is run multiple times with different parameters.  
 
-Code example with comments:
+Code example (comments included):
 <?php
-// Define a reusable trait with common logging functionality
-trait LoggerTrait {
-    // Log a message with a timestamp
-    public function log(string $message): void {
-        $time = date('Y-m-d H:i:s');
-        echo "[{$time}] {$message}\n";
-    }
+// Create a new PDO instance (adjust DSN, username, password as needed)
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'dbpass';
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC // Fetch results as associative arrays
+];
+$pdo = new PDO($dsn, $username, $password, $options);
+
+// Prepare an INSERT statement with named placeholders
+$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)";
+$stmt = $pdo->prepare($sql);
+
+// Bind values to the placeholders
+$stmt->bindValue(':username', 'alice', PDO::PARAM_STR);
+$stmt->bindValue(':email', 'alice@example.com', PDO::PARAM_STR);
+$stmt->bindValue(':created_at', date('Y-m-d H:i:s'), PDO::PARAM_STR);
+
+// Execute the prepared statement
+$stmt->execute();
+
+// Retrieve the ID of the newly inserted row
+$newUserId = $pdo->lastInsertId();
+echo "New user inserted with ID: " . $newUserId . PHP_EOL;
+
+// Example of a SELECT using a prepared statement with positional placeholders
+$selectSql = "SELECT id, username, email FROM users WHERE id > ?";
+$selectStmt = $pdo->prepare($selectSql);
+$selectStmt->execute([0]); // Pass an array of values for the placeholders
+
+// Fetch all matching rows
+$users = $selectStmt->fetchAll();
+foreach ($users as $user) {
+    echo "User ID: {$user['id']}, Username: {$user['username']}, Email: {$user['email']}" . PHP_EOL;
 }
-
-// First class that needs logging capability
-class OrderProcessor {
-    // Include the LoggerTrait
-    use LoggerTrait;
-
-    public function process(int $orderId): void {
-        $this->log("Processing order #{$orderId}");
-        // ... order processing logic ...
-        $this->log("Order #{$orderId} processed successfully");
-    }
-}
-
-// Second class that also needs logging, but with an additional method
-class UserManager {
-    use LoggerTrait;
-
-    public function createUser(string $username): void {
-        $this->log("Creating user '{$username}'");
-        // ... user creation logic ...
-        $this->log("User '{$username}' created");
-    }
-}
-
-// Demonstrate usage
-$order = new OrderProcessor();
-$order->process(12345);
-
-$user = new UserManager();
-$user->createUser('alice');
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container & Automatic Dependency Injection  
+Topic: Laravel Service Container & Dependency Injection
 
-Explanation:  
-The Laravel service container is a powerful tool for managing class dependencies and performing dependency injection. It resolves class instances automatically, allowing you to type‑hint dependencies in controller constructors or method signatures. By binding abstractions to concrete implementations, you can easily swap out services without changing consuming code. The container also supports contextual bindings, singleton bindings, and deferred resolution for performance. Understanding the container enables clean, testable, and maintainable code throughout a Laravel application.  
+Explanation:
+The Service Container is the heart of Laravel’s inversion of control (IoC) system. It resolves class dependencies automatically, allowing you to type‑hint dependencies in constructors or controller methods. By binding abstractions to concrete implementations, you can swap out classes without touching the consuming code. This makes testing easier because you can bind mock implementations in the container during unit tests. The container also supports contextual binding, singleton bindings, and automatic resolution of primitive parameters with default values.
 
-Code Example (app/Http/Controllers/ReportController.php):  
+Code example (app/Providers/AppServiceProvider.php):
+<?php
+namespace App\Providers;
 
-<?php  
+use Illuminate\Support\ServiceProvider;
+use App\Contracts\PaymentGateway;          // abstraction
+use App\Services\StripePaymentGateway;    // concrete implementation
 
-namespace App\Http\Controllers;  
+class AppServiceProvider extends ServiceProvider
+{
+    public function register()
+    {
+        // Bind the interface to the concrete class so the container can resolve it
+        $this->app->bind(PaymentGateway::class, function ($app) {
+            // You could read configuration values here
+            $apiKey = config('services.stripe.secret');
+            return new StripePaymentGateway($apiKey);
+        });
+    }
+}
+?>
 
-use App\Services\ReportGeneratorInterface;  
-use Illuminate\Http\Request;  
+Code example (app/Http/Controllers/OrderController.php):
+<?php
+namespace App\Http\Controllers;
 
-class ReportController extends Controller  
-{  
-    // Laravel will automatically inject the concrete class bound to ReportGeneratorInterface  
-    protected $reportGenerator;  
+use App\Contracts\PaymentGateway;   // injected dependency
+use Illuminate\Http\Request;
 
-    public function __construct(ReportGeneratorInterface $reportGenerator)  
-    {  
-        $this->reportGenerator = $reportGenerator; // assigned for later use  
-    }  
+class OrderController extends Controller
+{
+    protected $paymentGateway;
 
-    // Example action that uses the injected service  
-    public function show(Request $request, $id)  
-    {  
-        // The service generates a report based on the given ID  
-        $report = $this->reportGenerator->generate($id);  
+    // Laravel automatically injects the concrete implementation bound above
+    public function __construct(PaymentGateway $paymentGateway)
+    {
+        $this->paymentGateway = $paymentGateway;
+    }
 
-        // Return the report as JSON (could be a view or download)  
-        return response()->json($report);  
-    }  
-}  
+    public function store(Request $request)
+    {
+        // Use the payment gateway to process a charge
+        $amount = $request->input('amount');
+        $token  = $request->input('payment_token');
 
-// Service contract (app/Services/ReportGeneratorInterface.php)  
-<?php  
+        $charge = $this->paymentGateway->charge($amount, $token);
 
-namespace App\Services;  
-
-interface ReportGeneratorInterface  
-{  
-    public function generate(int $reportId): array; // returns report data as an array  
-}  
-
-// Concrete implementation (app/Services/ExcelReportGenerator.php)  
-<?php  
-
-namespace App\Services;  
-
-class ExcelReportGenerator implements ReportGeneratorInterface  
-{  
-    public function generate(int $reportId): array  
-    {  
-        // Complex logic to pull data and format it as an Excel-compatible array  
-        return [  
-            'id' => $reportId,  
-            'title' => 'Sales Report',  
-            'data' => [/* ... */],  
-        ];  
-    }  
-}  
-
-// Service provider binding (app/Providers/AppServiceProvider.php)  
-<?php  
-
-namespace App\Providers;  
-
-use Illuminate\Support\ServiceProvider;  
-use App\Services\ReportGeneratorInterface;  
-use App\Services\ExcelReportGenerator;  
-
-class AppServiceProvider extends ServiceProvider  
-{  
-    public function register()  
-    {  
-        // Bind the interface to the concrete class as a singleton  
-        $this->app->singleton(ReportGeneratorInterface::class, ExcelReportGenerator::class);  
-    }  
-
-    public function boot()  
-    {  
-        // No boot logic needed for this example  
-    }  
-}  
-
-// After adding the binding, Laravel’s container will resolve ReportGeneratorInterface 
-// to an instance of ExcelReportGenerator whenever it is type‑hinted, enabling clean 
-// dependency injection throughout the app.
+        // Continue with order creation logic...
+        return response()->json(['status' => 'success', 'charge_id' => $charge->id]);
+    }
+}
+?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) and Recursive Queries
+Topic: MySQL Stored Procedures
 
 Explanation:
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs improve query readability by allowing you to define subqueries in a clear, hierarchical manner.  
-They are introduced with the WITH clause and can be named, making complex joins and calculations easier to follow.  
-Recursive CTEs enable you to work with hierarchical data such as organization charts or tree structures by repeatedly referencing the CTE within itself.  
-MySQL supports both non‑recursive and recursive CTEs starting from version 8.0.
+A stored procedure is a reusable set of SQL statements that are stored on the MySQL server.  
+It allows you to encapsulate complex logic, control flow, and variable handling in a single object.  
+Procedures can accept input parameters, return output parameters, and be invoked repeatedly without re‑parsing the code.  
+Using stored procedures improves performance by reducing network round‑trips and centralizing business rules.  
+They also enhance security, because you can grant execution rights without exposing underlying tables.
 
-Code Example (with comments):
-WITH RECURSIVE OrgChart AS (  
-    -- Anchor member: start with the top‑level manager (e.g., employee_id = 1)  
-    SELECT employee_id, manager_id, employee_name, 1 AS level  
-    FROM employees  
-    WHERE manager_id IS NULL AND employee_id = 1  
-  
-    UNION ALL  
-  
-    -- Recursive member: find employees whose manager is already in the hierarchy  
-    SELECT e.employee_id, e.manager_id, e.employee_name, oc.level + 1 AS level  
-    FROM employees e  
-    INNER JOIN OrgChart oc ON e.manager_id = oc.employee_id  
-)  
-SELECT employee_id, manager_id, employee_name, level  
-FROM OrgChart  
-ORDER BY level, employee_id;  
+Code example (create, call, and drop a simple procedure that calculates the total sales for a given product):
+
+-- Create the procedure
+CREATE PROCEDURE GetTotalSales (
+    IN p_product_id INT,          -- input: product identifier
+    OUT p_total DECIMAL(10,2)    -- output: total sales amount
+)
+BEGIN
+    DECLARE v_sum DECIMAL(10,2) DEFAULT 0;
+    
+    -- Sum the amount from the sales table for the specified product
+    SELECT IFNULL(SUM(amount),0) INTO v_sum
+    FROM sales
+    WHERE product_id = p_product_id;
+    
+    SET p_total = v_sum;          -- assign the result to the OUT parameter
+END;
+
+-- Call the procedure
+CALL GetTotalSales(42, @total_sales);   -- 42 is the product_id, result stored in @total_sales
+SELECT @total_sales AS TotalSales;      -- display the returned total
+
+-- Remove the procedure when it is no longer needed
+DROP PROCEDURE IF EXISTS GetTotalSales;
 */
 
 /* JavaScript
-Topic: JavaScript Closures
+Topic: Closures in JavaScript  
 
-Explanation:
-A closure is created when an inner function accesses variables from an outer function that has already finished executing. The inner function retains a reference to those outer variables, preserving their values across calls. Closures enable data encapsulation, allowing private state that cannot be accessed directly from the outside. They are fundamental for patterns like module creation, function factories, and asynchronous callbacks. Understanding closures helps avoid common pitfalls such as unintended shared state in loops.
+Explanation:  
+A closure is a function that retains access to the lexical environment in which it was created, even after that outer function has finished executing. This allows inner functions to remember and manipulate variables from their parent scope. Closures are useful for data privacy, function factories, and maintaining state between calls without exposing variables globally. They are created automatically whenever a function references a variable defined outside its own body. Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state.  
 
-Code example:
-// Outer function that defines a private variable
-function makeCounter() {
-    let count = 0;                     // This variable is private to makeCounter
+Code example:  
+function makeCounter(initialValue) {                // outer function creates a private variable  
+  let count = initialValue;                         // this variable is captured by the inner function  
 
-    // Inner function forms a closure over 'count'
-    return function() {
-        count += 1;                    // Modifies the private variable
-        console.log('Current count:', count);
-    };
-}
+  return function() {                               // the returned function forms a closure  
+    count += 1;                                      // it can read and modify 'count'  
+    return count;                                   // each call sees the updated value  
+  };                                                // end of inner function  
+}                                                   // end of outer function  
 
-// Create two independent counters
-const counterA = makeCounter();        // counterA has its own 'count'
-const counterB = makeCounter();        // counterB has a separate 'count'
+const counterA = makeCounter(0); // first independent counter  
+const counterB = makeCounter(10); // second independent counter  
 
-// Invoke the counters
-counterA(); // Output: Current count: 1
-counterA(); // Output: Current count: 2
-counterB(); // Output: Current count: 1   (independent from counterA)
+console.log(counterA()); // 1 – count starts at 0, then increments  
+console.log(counterA()); // 2 – retains previous value  
+console.log(counterB()); // 11 – separate closure, its own private count  
+console.log(counterB()); // 12 – continues from its own state  
 */
 
 /* AI
-Topic: Prompt Engineering for Few‑Shot Learning with GPT‑4  
+Topic: Chain‑of‑Thought Prompting for Complex Reasoning  
 
 Explanation:  
-Few‑shot prompting lets a language model infer a task from just a handful of examples supplied in the prompt, eliminating the need for fine‑tuning. The key is to format the examples clearly and to include a concise instruction that tells the model what to do. Using delimiters (e.g., triple backticks) and consistent labeling helps the model recognize the pattern. Temperature should be set low (≈0) for deterministic output, while max_tokens limits the response length. This technique works well for classification, extraction, and transformation tasks without any extra training data.
+1. Chain‑of‑Thought (CoT) prompting encourages the model to generate intermediate reasoning steps before giving a final answer, which improves performance on tasks requiring multi‑step logic.  
+2. The technique works by appending examples that show explicit reasoning, so the model learns to “think out loud.”  
+3. CoT is especially effective for math problems, symbolic reasoning, and puzzles where a single‑shot answer often fails.  
+4. You can control depth of reasoning by adjusting the prompt length or adding “Let’s think step by step.”  
+5. When using API calls, include the CoT examples in the system or user messages, then parse the final answer from the model’s output.  
 
-Code example (Python, OpenAI API):
+Python code example (using OpenAI’s chat completion API) with comments:  
 
-import os
-import openai
+import os  
+import openai  
 
-# Load your API key from the environment
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Load your API key from an environment variable  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-def classify_sentiment(text):
-    # Construct a few‑shot prompt with two labeled examples
-    prompt = (
-        "Classify the sentiment of the following sentences as Positive, Negative, or Neutral.\n\n"
-        "Sentence: \"I love the new design!\"\n"
-        "Sentiment: Positive\n\n"
-        "Sentence: \"The delivery was late and the package was damaged.\"\n"
-        "Sentiment: Negative\n\n"
-        f"Sentence: \"{text}\"\n"
-        "Sentiment:"
-    )
+def solve_with_cot(question: str) -> str:  
+    # Prompt that demonstrates chain‑of‑thought reasoning  
+    cot_prompt = (  
+        "You are a helpful assistant that solves problems by reasoning step by step.\n"  
+        "Example:\n"  
+        "Q: If a train travels 60 km/h for 2 hours and then 80 km/h for 3 hours, what is the total distance?\n"  
+        "A: First, compute the distance for each segment.\n"  
+        "   - 60 km/h * 2 h = 120 km\n"  
+        "   - 80 km/h * 3 h = 240 km\n"  
+        "   Then add the two distances: 120 km + 240 km = 360 km.\n"  
+        "   Therefore, the total distance is 360 km.\n"  
+        "\n"  
+        f"Q: {question}\n"  
+        "A:"  
+    )  
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",          # fast, cheap model suitable for prompts
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0,                # deterministic output
-        max_tokens=10,                # short label expected
-        top_p=1,
-        n=1,
-    )
-    # Extract the model's answer and strip whitespace
-    sentiment = response.choices[0].message.content.strip()
-    return sentiment
+    response = openai.ChatCompletion.create(  
+        model="gpt-4o-mini",          # choose a model that supports chat completion  
+        messages=[{"role": "user", "content": cot_prompt}],  
+        temperature=0.0,               # deterministic output for math‑type tasks  
+        max_tokens=300                 # enough space for reasoning steps  
+    )  
 
-# Example usage
-print(classify_sentiment("The movie was okay, not great but not terrible either."))  
+    # The model returns the full reasoning text; extract the final answer line  
+    answer_text = response.choices[0].message.content.strip()  
+    return answer_text  
+
+# Example usage  
+question = "A rectangle has length 12 cm and width 5 cm. What is its area?"  
+print(solve_with_cot(question))   # The model will show the multiplication step before the final area.
 */
 
