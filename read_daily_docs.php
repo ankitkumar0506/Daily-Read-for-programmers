@@ -1,97 +1,100 @@
 <?php
-// 2026-10-02 06:40:10
+// 2026-10-02 07:17:41
 
 /* PHP
-Topic: Prepared Statements with PDO  
+PHP Topic: Using PDO Prepared Statements for Secure Database Access  
 
 Explanation:  
+PDO (PHP Data Objects) provides a uniform interface for accessing different databases.  
 Prepared statements separate SQL code from data, preventing SQL injection attacks.  
-The PDO (PHP Data Objects) extension provides a consistent interface for many databases.  
-You first prepare the SQL query with placeholders, then bind values and execute it.  
-PDO also allows you to fetch results in various formats (objects, associative arrays, etc.).  
-Using prepared statements improves performance when the same query is run multiple times with different parameters.  
+You can bind parameters by name or position, allowing automatic type handling.  
+The statement is prepared once and can be executed multiple times with different values.  
+Error handling with exceptions makes debugging easier and keeps code clean.  
 
-Code example (comments included):
+Code Example (with inline comments):  
+
 <?php
-// Create a new PDO instance (adjust DSN, username, password as needed)
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$username = 'dbuser';
-$password = 'dbpass';
+// Enable exceptions for PDO errors
 $options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC // Fetch results as associative arrays
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
 ];
-$pdo = new PDO($dsn, $username, $password, $options);
 
-// Prepare an INSERT statement with named placeholders
-$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)";
-$stmt = $pdo->prepare($sql);
+// Create a new PDO connection (adjust DSN, username, password as needed)
+$pdo = new PDO('mysql:host=localhost;dbname=testdb;charset=utf8', 'dbuser', 'dbpass', $options);
 
-// Bind values to the placeholders
-$stmt->bindValue(':username', 'alice', PDO::PARAM_STR);
-$stmt->bindValue(':email', 'alice@example.com', PDO::PARAM_STR);
-$stmt->bindValue(':created_at', date('Y-m-d H:i:s'), PDO::PARAM_STR);
+try {
+    // Prepare an INSERT statement with named placeholders
+    $stmt = $pdo->prepare(
+        'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())'
+    );
 
-// Execute the prepared statement
-$stmt->execute();
+    // Bind values to the placeholders
+    $stmt->bindParam(':username', $username);
+    $stmt->bindParam(':email', $email);
 
-// Retrieve the ID of the newly inserted row
-$newUserId = $pdo->lastInsertId();
-echo "New user inserted with ID: " . $newUserId . PHP_EOL;
+    // Sample data to insert
+    $username = 'alice';
+    $email = 'alice@example.com';
 
-// Example of a SELECT using a prepared statement with positional placeholders
-$selectSql = "SELECT id, username, email FROM users WHERE id > ?";
-$selectStmt = $pdo->prepare($selectSql);
-$selectStmt->execute([0]); // Pass an array of values for the placeholders
+    // Execute the prepared statement
+    $stmt->execute();
 
-// Fetch all matching rows
-$users = $selectStmt->fetchAll();
-foreach ($users as $user) {
-    echo "User ID: {$user['id']}, Username: {$user['username']}, Email: {$user['email']}" . PHP_EOL;
+    echo "User inserted with ID: " . $pdo->lastInsertId();
+} catch (PDOException $e) {
+    // Handle any errors gracefully
+    echo 'Database error: ' . $e->getMessage();
 }
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container & Dependency Injection
+Topic: Laravel Service Container Binding and Resolution
 
 Explanation:
-The Service Container is the heart of Laravel’s inversion of control (IoC) system. It resolves class dependencies automatically, allowing you to type‑hint dependencies in constructors or controller methods. By binding abstractions to concrete implementations, you can swap out classes without touching the consuming code. This makes testing easier because you can bind mock implementations in the container during unit tests. The container also supports contextual binding, singleton bindings, and automatic resolution of primitive parameters with default values.
+The Laravel service container is a powerful tool for managing class dependencies and performing dependency injection. By binding an interface or abstract class to a concrete implementation, you tell the container how to resolve the dependency when it is needed. This allows you to swap implementations without changing the consuming code, facilitating testing and adherence to the SOLID principles. Bindings are typically defined in service providers, and the container resolves them automatically when type‑hinted in constructors or controller methods. You can also bind singletons to ensure only one instance of a class is created throughout the request lifecycle.
 
-Code example (app/Providers/AppServiceProvider.php):
+Code example (placed in a service provider, e.g., App\Providers\AppServiceProvider.php):
 <?php
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;          // abstraction
-use App\Services\StripePaymentGateway;    // concrete implementation
+use App\Contracts\PaymentGateway;          // Interface
+use App\Services\StripePaymentGateway;     // Concrete implementation
 
 class AppServiceProvider extends ServiceProvider
 {
+    /**
+     * Register bindings in the service container.
+     */
     public function register()
     {
-        // Bind the interface to the concrete class so the container can resolve it
+        // Bind the interface to the concrete class.
+        // When PaymentGateway is requested, Laravel will resolve StripePaymentGateway.
         $this->app->bind(PaymentGateway::class, function ($app) {
-            // You could read configuration values here
+            // You can pull configuration values or other services from the container here.
             $apiKey = config('services.stripe.secret');
             return new StripePaymentGateway($apiKey);
         });
+
+        // Example of a singleton binding – only one instance will be created.
+        // $this->app->singleton(PaymentGateway::class, StripePaymentGateway::class);
     }
 }
 ?>
 
-Code example (app/Http/Controllers/OrderController.php):
+Usage in a controller (Laravel will inject the bound implementation automatically):
 <?php
 namespace App\Http\Controllers;
 
-use App\Contracts\PaymentGateway;   // injected dependency
+use App\Contracts\PaymentGateway;
 use Illuminate\Http\Request;
 
 class OrderController extends Controller
 {
     protected $paymentGateway;
 
-    // Laravel automatically injects the concrete implementation bound above
+    // Laravel injects the StripePaymentGateway instance here.
     public function __construct(PaymentGateway $paymentGateway)
     {
         $this->paymentGateway = $paymentGateway;
@@ -99,127 +102,128 @@ class OrderController extends Controller
 
     public function store(Request $request)
     {
-        // Use the payment gateway to process a charge
-        $amount = $request->input('amount');
-        $token  = $request->input('payment_token');
+        $orderData = $request->all();
 
-        $charge = $this->paymentGateway->charge($amount, $token);
+        // Use the payment gateway to process payment.
+        $this->paymentGateway->charge($orderData['amount'], $orderData['currency']);
 
         // Continue with order creation logic...
-        return response()->json(['status' => 'success', 'charge_id' => $charge->id]);
+        return response()->json(['status' => 'order created']);
     }
 }
 ?>
 */
 
 /* MySQL
-Topic: MySQL Stored Procedures
+Topic: Common Table Expressions (CTE) and Recursive Queries
 
 Explanation:
-A stored procedure is a reusable set of SQL statements that are stored on the MySQL server.  
-It allows you to encapsulate complex logic, control flow, and variable handling in a single object.  
-Procedures can accept input parameters, return output parameters, and be invoked repeatedly without re‑parsing the code.  
-Using stored procedures improves performance by reducing network round‑trips and centralizing business rules.  
-They also enhance security, because you can grant execution rights without exposing underlying tables.
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It is defined using the WITH clause and can improve readability by breaking complex queries into logical building blocks. Recursive CTEs allow you to perform hierarchical or iterative processing, such as traversing parent‑child relationships. The CTE exists only for the duration of the statement, so it does not affect the underlying tables. Recursive CTEs must contain an anchor member (the base case) and a recursive member that references the CTE itself, with a termination condition to prevent infinite loops.
 
-Code example (create, call, and drop a simple procedure that calculates the total sales for a given product):
+Code example (MySQL 8.0+):
 
--- Create the procedure
-CREATE PROCEDURE GetTotalSales (
-    IN p_product_id INT,          -- input: product identifier
-    OUT p_total DECIMAL(10,2)    -- output: total sales amount
+-- Define a recursive CTE to generate a simple number series from 1 to 10
+WITH RECURSIVE numbers AS (
+    SELECT 1 AS n                     -- Anchor member: start with 1
+    UNION ALL
+    SELECT n + 1 FROM numbers        -- Recursive member: add 1 to the previous value
+    WHERE n < 10                     -- Termination condition: stop at 10
 )
-BEGIN
-    DECLARE v_sum DECIMAL(10,2) DEFAULT 0;
-    
-    -- Sum the amount from the sales table for the specified product
-    SELECT IFNULL(SUM(amount),0) INTO v_sum
-    FROM sales
-    WHERE product_id = p_product_id;
-    
-    SET p_total = v_sum;          -- assign the result to the OUT parameter
-END;
+SELECT n
+FROM numbers
+ORDER BY n;                          -- Result: 1,2,3,4,5,6,7,8,9,10
 
--- Call the procedure
-CALL GetTotalSales(42, @total_sales);   -- 42 is the product_id, result stored in @total_sales
-SELECT @total_sales AS TotalSales;      -- display the returned total
-
--- Remove the procedure when it is no longer needed
-DROP PROCEDURE IF EXISTS GetTotalSales;
+-- Example of a hierarchical query using a CTE on an employee table
+-- Assume a table employees(id INT PRIMARY KEY, name VARCHAR(50), manager_id INT)
+WITH RECURSIVE org_chart AS (
+    SELECT id, name, manager_id, 0 AS level
+    FROM employees
+    WHERE manager_id IS NULL               -- Anchor: top‑level executives
+    UNION ALL
+    SELECT e.id, e.name, e.manager_id, oc.level + 1
+    FROM employees e
+    JOIN org_chart oc ON e.manager_id = oc.id   -- Recursive step: link subordinates
+)
+SELECT id, name, manager_id, level
+FROM org_chart
+ORDER BY level, manager_id;               -- Shows the hierarchy with indentation level.
 */
 
 /* JavaScript
 Topic: Closures in JavaScript  
 
 Explanation:  
-A closure is a function that retains access to the lexical environment in which it was created, even after that outer function has finished executing. This allows inner functions to remember and manipulate variables from their parent scope. Closures are useful for data privacy, function factories, and maintaining state between calls without exposing variables globally. They are created automatically whenever a function references a variable defined outside its own body. Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state.  
+A closure is created when an inner function accesses variables from its outer (enclosing) function after the outer function has finished executing.  
+Closures allow you to preserve state between function calls without using global variables.  
+They are essential for data encapsulation, memoization, and implementing private members.  
+Because the inner function retains a reference to the outer scope’s variables, those variables stay alive in memory.  
+Understanding closures helps avoid common pitfalls such as unexpected variable sharing in loops.  
 
-Code example:  
-function makeCounter(initialValue) {                // outer function creates a private variable  
-  let count = initialValue;                         // this variable is captured by the inner function  
+Code example (with comments):  
+function makeCounter() {               // outer function creates a private count variable  
+    let count = 0;                     // this variable is not accessible from outside  
+    return function() {                // inner function forms a closure over 'count'  
+        count++;                       // modify the private variable each call  
+        console.log('Current count:', count); // use the private state  
+    };                                 // the returned function keeps a reference to 'count'  
+}                                      // end of makeCounter  
 
-  return function() {                               // the returned function forms a closure  
-    count += 1;                                      // it can read and modify 'count'  
-    return count;                                   // each call sees the updated value  
-  };                                                // end of inner function  
-}                                                   // end of outer function  
+const counterA = makeCounter();        // each call creates a separate closure  
+const counterB = makeCounter();  
 
-const counterA = makeCounter(0); // first independent counter  
-const counterB = makeCounter(10); // second independent counter  
-
-console.log(counterA()); // 1 – count starts at 0, then increments  
-console.log(counterA()); // 2 – retains previous value  
-console.log(counterB()); // 11 – separate closure, its own private count  
-console.log(counterB()); // 12 – continues from its own state  
+counterA(); // Output: Current count: 1  
+counterA(); // Output: Current count: 2  
+counterB(); // Output: Current count: 1   (independent from counterA)  
 */
 
 /* AI
-Topic: Chain‑of‑Thought Prompting for Complex Reasoning  
+Topic: Few‑Shot Prompt Engineering for Zero‑Shot Text Classification  
 
 Explanation:  
-1. Chain‑of‑Thought (CoT) prompting encourages the model to generate intermediate reasoning steps before giving a final answer, which improves performance on tasks requiring multi‑step logic.  
-2. The technique works by appending examples that show explicit reasoning, so the model learns to “think out loud.”  
-3. CoT is especially effective for math problems, symbolic reasoning, and puzzles where a single‑shot answer often fails.  
-4. You can control depth of reasoning by adjusting the prompt length or adding “Let’s think step by step.”  
-5. When using API calls, include the CoT examples in the system or user messages, then parse the final answer from the model’s output.  
+This technique uses a small number of labeled examples directly in the prompt to guide a large language model (LLM) toward the desired classification task. By presenting the model with a few input‑output pairs, we “show” it the format and decision boundaries without any fine‑tuning. The approach works well for tasks where labeled data is scarce or when rapid prototyping is needed. It leverages the LLM’s ability to infer patterns from context, making it flexible across domains. The prompt can be adapted to any classification problem by changing the example sentences and labels.  
 
-Python code example (using OpenAI’s chat completion API) with comments:  
+Code example (Python, using OpenAI’s ChatCompletion API):  
 
 import os  
 import openai  
 
-# Load your API key from an environment variable  
+# Load your OpenAI API key from an environment variable  
 openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-def solve_with_cot(question: str) -> str:  
-    # Prompt that demonstrates chain‑of‑thought reasoning  
-    cot_prompt = (  
-        "You are a helpful assistant that solves problems by reasoning step by step.\n"  
-        "Example:\n"  
-        "Q: If a train travels 60 km/h for 2 hours and then 80 km/h for 3 hours, what is the total distance?\n"  
-        "A: First, compute the distance for each segment.\n"  
-        "   - 60 km/h * 2 h = 120 km\n"  
-        "   - 80 km/h * 3 h = 240 km\n"  
-        "   Then add the two distances: 120 km + 240 km = 360 km.\n"  
-        "   Therefore, the total distance is 360 km.\n"  
-        "\n"  
-        f"Q: {question}\n"  
-        "A:"  
-    )  
+# Define a few‑shot prompt with two example sentences and their categories  
+few_shot_prompt = """Classify the following sentences as Positive, Negative, or Neutral.  
 
+Sentence: "I love the new update, it works flawlessly!"  
+Label: Positive  
+
+Sentence: "The app crashes every time I open it, very frustrating."  
+Label: Negative  
+
+Sentence: "The interface is okay, nothing special."  
+Label: Neutral  
+
+Now classify this sentence: "{}"  
+Label:"""  
+
+def classify_sentence(sentence: str) -> str:  
+    # Insert the user sentence into the prompt template  
+    prompt = few_shot_prompt.format(sentence)  
+
+    # Call the ChatCompletion endpoint with the constructed prompt  
     response = openai.ChatCompletion.create(  
-        model="gpt-4o-mini",          # choose a model that supports chat completion  
-        messages=[{"role": "user", "content": cot_prompt}],  
-        temperature=0.0,               # deterministic output for math‑type tasks  
-        max_tokens=300                 # enough space for reasoning steps  
+        model="gpt-4o-mini",  
+        messages=[{"role": "user", "content": prompt}],  
+        temperature=0.0,               # deterministic output for classification  
+        max_tokens=10,                 # we only need the label word  
     )  
 
-    # The model returns the full reasoning text; extract the final answer line  
-    answer_text = response.choices[0].message.content.strip()  
-    return answer_text  
+    # Extract the model's reply and strip whitespace/newlines  
+    label = response.choices[0].message.content.strip()  
+    return label  
 
 # Example usage  
-question = "A rectangle has length 12 cm and width 5 cm. What is its area?"  
-print(solve_with_cot(question))   # The model will show the multiplication step before the final area.
+test_sentence = "The battery life could be better, but the screen is great."  
+print(f"Sentence: {test_sentence}")  
+print("Predicted label:", classify_sentence(test_sentence))  
 */
 
