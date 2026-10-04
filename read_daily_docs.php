@@ -1,220 +1,230 @@
 <?php
-// 2026-10-03 06:52:22
+// 2026-10-04 07:13:31
 
 /* PHP
-PHP Generators  
+PHP Generators (yield)
 
-Generators are a memory‑efficient way to create iterators without building an entire array in memory.  
-They use the `yield` keyword to produce values one at a time, pausing the function’s execution between each.  
-This makes them ideal for processing large data sets, streaming files, or any scenario where you need lazy evaluation.  
-A generator returns an object that implements the Traversable interface, so it can be used in `foreach` loops.  
-Because the state is preserved between yields, you can also send data back into the generator with `send()`.  
+Explanation:
+- Generators provide a simple way to implement iterators without the overhead of building an array in memory.  
+- Using the `yield` keyword, a function can return values one at a time, preserving its execution state between each call.  
+- This is especially useful when working with large data sets, such as reading big files or processing database rows.  
+- Generators improve performance and reduce memory consumption because only a single value is held in memory at any moment.  
+- They can be combined with `foreach` loops just like regular arrays, making them easy to integrate into existing code.
 
-Example – reading a large CSV file line by line with a generator:  
+Code example with comments:
 
-function readCsv(string $filePath): Generator  
-{  
-    $handle = fopen($filePath, 'r');                // Open file for reading  
-    if ($handle === false) {  
-        throw new RuntimeException('Cannot open file');  
-    }  
-  
-    while (($row = fgetcsv($handle)) !== false) {   // Read each CSV row  
-        yield $row;                                 // Yield the row as an array  
-    }  
-  
-    fclose($handle);                               // Close file when done  
-}  
-  
-// Usage: iterate without loading the whole file into memory  
-foreach (readCsv('big-data.csv') as $line) {  
-    // Process each $line (an array of fields) here  
-    echo implode(', ', $line) . PHP_EOL;  
-}  
+function readLargeFile(string $filePath) {
+    // Open the file for reading
+    $handle = fopen($filePath, 'r');
+    if ($handle === false) {
+        throw new RuntimeException("Cannot open file: $filePath");
+    }
+
+    // Loop until end of file
+    while (($line = fgets($handle)) !== false) {
+        // Yield each line to the caller, preserving the function state
+        yield $line;
+    }
+
+    // Close the file after all lines have been processed
+    fclose($handle);
+}
+
+// Usage of the generator
+foreach (readLargeFile('large_text_file.txt') as $lineNumber => $content) {
+    // Process each line individually without loading the entire file into memory
+    echo "Line " . ($lineNumber + 1) . ": " . $content;
+}
 */
 
 /* Laravel
-Topic: Laravel Queues with the Redis driver  
+Topic: Laravel Eloquent Polymorphic Relationships
 
-Explanation:  
-Laravel queues allow time‑consuming tasks (email sending, image processing, etc.) to be processed asynchronously, keeping the web request fast. The Redis driver provides a fast, in‑memory queue backend that works well for both small and large scale applications. Jobs are defined as plain PHP classes that implement the ShouldQueue interface and placed on a named queue. The queue worker continuously polls Redis, pulls pending jobs, and runs their handle method. Using queues improves user experience and lets you retry failed jobs automatically.
+Explanation:
+Polymorphic relationships allow a model to belong to more than one other model on a single association. This is useful when different models share a common feature, such as comments that can belong to posts, videos, or products. Laravel handles the underlying foreign keys and type columns automatically, simplifying queries and data integrity. You define the relationship methods on each model and use morphMany or morphTo depending on the direction. When retrieving related records, Laravel returns the appropriate model instances without extra manual checks.
 
-Code example (Job class and dispatch)  
+Code example (Comment model, Post model, migration, and usage):
 
-<?php  
+<?php
+// app/Models/Comment.php
+namespace App\Models;
 
-namespace App\Jobs;  
+use Illuminate\Database\Eloquent\Model;
 
-use Illuminate\Bus\Queueable;  
-use Illuminate\Contracts\Queue\ShouldQueue;  
-use Illuminate\Foundation\Bus\Dispatchable;  
-use Illuminate\Queue\InteractsWithQueue;  
-use Illuminate\Queue\SerializesModels;  
+class Comment extends Model
+{
+    // Inverse side of the polymorphic relation
+    public function commentable()
+    {
+        // Laravel will look for commentable_id and commentable_type columns
+        return $this->morphTo();
+    }
+}
 
-class SendWelcomeEmail implements ShouldQueue  
-{  
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;  
+// app/Models/Post.php
+namespace App\Models;
 
-    protected $userId; // ID of the user to email  
+use Illuminate\Database\Eloquent\Model;
 
-    /**  
-     * Create a new job instance.  
-     */  
-    public function __construct($userId)  
-    {  
-        $this->userId = $userId;  
-    }  
+class Post extends Model
+{
+    // A post can have many comments
+    public function comments()
+    {
+        // Laravel will use commentable_id and commentable_type to match this post
+        return $this->morphMany(Comment::class, 'commentable');
+    }
+}
 
-    /**  
-     * Execute the job.  
-     */  
-    public function handle()  
-    {  
-        $user = \App\Models\User::find($this->userId); // retrieve the user  
-        if ($user) {  
-            // Use Laravel's Mail facade to send the email  
-            \Mail::to($user->email)->send(new \App\Mail\WelcomeMail($user));  
-        }  
-    }  
+// database/migrations/2024_10_04_000000_create_comments_table.php
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 
-    /**  
-     * The number of times the job may be attempted.  
-     */  
-    public $tries = 3;  
+class CreateCommentsTable extends Migration
+{
+    public function up()
+    {
+        Schema::create('comments', function (Blueprint $table) {
+            $table->id();
+            $table->text('body');
+            // Polymorphic fields
+            $table->unsignedBigInteger('commentable_id');
+            $table->string('commentable_type');
+            $table->timestamps();
 
-    /**  
-     * Seconds to wait before retrying a failed job.  
-     */  
-    public $backoff = 60;  
-}  
+            // Optional index for faster lookups
+            $table->index(['commentable_type', 'commentable_id']);
+        });
+    }
 
-// Dispatching the job from a controller or service  
-use App\Jobs\SendWelcomeEmail;  
+    public function down()
+    {
+        Schema::dropIfExists('comments');
+    }
+}
 
-public function register(Request $request)  
-{  
-    $user = \App\Models\User::create($request->all()); // create the user  
+// Using the polymorphic relationship
+use App\Models\Post;
+use App\Models\Comment;
 
-    // Push the email job onto the "emails" queue using Redis driver  
-    SendWelcomeEmail::dispatch($user->id)->onQueue('emails');  
+// Create a new post
+$post = Post::create(['title' => 'Laravel Polymorphism', 'content' => '...']);
 
-    return response()->json(['message' => 'User registered, welcome email queued.']);  
-}  
+// Add a comment to the post via the polymorphic relation
+$post->comments()->create(['body' => 'Great article!']);
 
-// To start processing jobs, run the queue worker with the Redis connection:  
-// php artisan queue:work redis --queue=emails --tries=3   (run this in a terminal)  
+// Retrieve the comment and access its parent model
+$comment = Comment::first();
+$parent = $comment->commentable; // Returns the Post instance
+echo $parent->title; // Outputs: Laravel Polymorphism
+
+// You can also attach comments to other models (e.g., Video) using the same fields
+?>
 */
 
 /* MySQL
-Topic: Recursive Common Table Expressions (CTEs) in MySQL
+Topic: MySQL Transactions and ACID Compliance
 
-Explanation:
-A recursive CTE lets you query hierarchical or tree‑structured data without writing procedural code. It consists of an anchor query that returns the first level of rows and a recursive member that references the CTE itself to produce subsequent levels. MySQL evaluates the CTE repeatedly, appending each new result set until the recursive member returns no rows. This technique is useful for organization charts, bill‑of‑materials, or any parent‑child relationship. You must include the MAXRECURSION option (or rely on the default limit of 1000) to prevent infinite loops.
+Explanation:  
+A transaction groups several SQL statements into a single logical unit of work, ensuring that either all changes are applied or none at all. MySQL enforces the ACID properties—Atomicity, Consistency, Isolation, Durability—to guarantee data integrity even in the presence of errors or concurrent access. By default, InnoDB tables support transactions; you can explicitly begin, commit, or roll back a transaction. Proper use of isolation levels (e.g., READ COMMITTED, REPEATABLE READ) controls how concurrent transactions interact. Transactions are essential for financial operations, inventory updates, and any scenario where partial updates could corrupt business logic.
 
-Code example (comments start with --):
+Code example (with comments):
+-- Start a new transaction
+START TRANSACTION;
 
--- Create a sample table representing an employee hierarchy
-CREATE TABLE employees (
-    emp_id INT PRIMARY KEY,
-    emp_name VARCHAR(50),
-    manager_id INT NULL   -- NULL means top‑level manager
-);
+-- Insert a new order record
+INSERT INTO orders (order_id, customer_id, total_amount, status)
+VALUES (101, 25, 199.99, 'pending');
 
--- Insert sample data
-INSERT INTO employees VALUES
-(1, 'Alice', NULL),   -- CEO
-(2, 'Bob', 1),        -- reports to Alice
-(3, 'Carol', 1),      -- reports to Alice
-(4, 'Dave', 2),       -- reports to Bob
-(5, 'Eve', 2),        -- reports to Bob
-(6, 'Frank', 3);      -- reports to Carol
+-- Decrease product stock based on the order
+UPDATE products
+SET stock = stock - 1
+WHERE product_id = 57 AND stock > 0;
 
--- Recursive CTE to list all subordinates of a given manager (e.g., manager_id = 1)
-WITH RECURSIVE subordinates AS (
-    -- Anchor member: start with the direct reports of the chosen manager
-    SELECT emp_id, emp_name, manager_id, 1 AS level
-    FROM employees
-    WHERE manager_id = 1
-    UNION ALL
-    -- Recursive member: find employees whose manager is in the previous level
-    SELECT e.emp_id, e.emp_name, e.manager_id, s.level + 1
-    FROM employees e
-    INNER JOIN subordinates s ON e.manager_id = s.emp_id
-)
-SELECT emp_id, emp_name, manager_id, level
-FROM subordinates
-ORDER BY level, emp_id;
-
--- The result shows Bob, Carol at level 1, then Dave, Eve, Frank at level 2.
+-- If the stock update affected no rows, something is wrong; roll back
+IF ROW_COUNT() = 0 THEN
+    ROLLBACK;  -- Undo the INSERT and any other changes
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Insufficient stock';
+ELSE
+    COMMIT;    -- All statements succeeded; make changes permanent
+END IF;
 */
 
 /* JavaScript
-Topic: Closures in JavaScript  
+Topic: JavaScript Closures
 
 Explanation:  
-A closure is a function that retains access to its lexical scope even when the outer function has finished executing.  
-It allows private variables to be encapsulated, enabling data hiding and stateful functions without exposing internal details.  
-Closures are created each time a function is defined, capturing the surrounding variables at that moment.  
-They are essential for patterns such as factories, memoization, and event handlers.  
-Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state across calls.  
+A closure is created when an inner function accesses variables from an outer function that has already finished executing. The inner function retains a reference to the outer scope’s variables, forming a persistent lexical environment. This allows data privacy, function factories, and the emulation of private state in JavaScript. Closures are fundamental for callbacks, event handlers, and module patterns. Understanding closures helps avoid common pitfalls such as unintended variable sharing in loops.
 
-Code example:  
-function makeCounter() {  
-    let count = 0; // private variable captured by the inner function  
-    return function() {  
-        count++;            // modifies the closed‑over variable  
-        return count;       // returns the updated value  
-    };  
-}  
+Code example:
+// Outer function that defines a private counter
+function createCounter(initialValue) {
+    let count = initialValue;               // 'count' is scoped to createCounter
 
-const counter = makeCounter(); // each call to makeCounter gets its own closure  
+    // Inner function forms a closure over 'count'
+    return function increment(step = 1) {
+        count += step;                      // Accesses and updates the outer variable
+        return count;                       // Returns the updated count
+    };
+}
 
-console.log(counter()); // 1  
-console.log(counter()); // 2  
-console.log(counter()); // 3  
+// Create two independent counters
+const counterA = createCounter(0);
+const counterB = createCounter(10);
+
+// Use the counters
+console.log(counterA());    // 1
+console.log(counterA(5));   // 6
+console.log(counterB());    // 11
+console.log(counterB(2));   // 13
+
+// Each counter retains its own private 'count' variable because the inner
+// function closes over the lexical environment that existed when it was created.
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering for Large Language Models
+Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
 
 Explanation:  
-Few‑shot prompting supplies a language model with a handful of example inputs and desired outputs directly in the prompt, guiding the model to infer the intended pattern. This technique is lightweight—no fine‑tuning required—and works well for tasks like text classification, transformation, or data extraction. By carefully selecting diverse yet representative examples, you can improve consistency and reduce hallucinations. The prompt structure typically includes a brief instruction, several labeled examples, and a placeholder for the new query. Adjusting the number of shots, the wording of instructions, and the formatting of examples can dramatically affect performance.
+Few‑shot prompting supplies the model with a handful of example interactions before the new user query, guiding the assistant’s style and content. By embedding these examples directly in the prompt, you can influence tone, formatting, and domain knowledge without fine‑tuning. This technique works well for Q&A, code assistance, or any task where consistent responses are desired. The examples act as a “soft” instruction set that the model follows for the subsequent request. Using the Chat Completion endpoint, you can programmatically build the prompt, append the user’s question, and retrieve a tailored answer.
 
-Code example (Python, using OpenAI’s ChatCompletion API):
+Code example (Python, with comments):  
+import os  
+import openai  
 
-import os
-import json
-import openai
+# Load your OpenAI API key from an environment variable  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Load your API key from an environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Create a few‑shot prompt containing two solved examples  
+few_shot_prompt = """You are a helpful assistant.
 
-def classify_sentiment(text):
-    # Build a few‑shot prompt with instruction and examples
-    prompt = [
-        {"role": "system", "content": "You are a helpful assistant that classifies sentiment as Positive, Negative, or Neutral."},
-        {"role": "user",   "content": "Review: I love this product! It works perfectly.\nSentiment:"},
-        {"role": "assistant","content": "Positive"},
-        {"role": "user",   "content": "Review: The item arrived late and was damaged.\nSentiment:"},
-        {"role": "assistant","content": "Negative"},
-        {"role": "user",   "content": "Review: The packaging is okay, nothing special.\nSentiment:"},
-        {"role": "assistant","content": "Neutral"},
-        {"role": "user",   "content": f"Review: {text}\nSentiment:"}
-    ]
+User: How do I reverse a list in Python?  
+Assistant: You can use the reverse() method or slicing: my_list.reverse() or my_list[::-1].
 
-    # Call the ChatCompletion endpoint
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",      # choose a suitable model
-        messages=prompt,
-        temperature=0.0           # deterministic output for classification
-    )
+User: What is the time complexity of binary search?  
+Assistant: The time complexity is O(log n).
 
-    # Extract and return the model's answer
-    sentiment = response.choices[0].message.content.strip()
-    return sentiment
+User: """  
 
-# Example usage
-sample = "The battery life is decent, but the screen is dull."
-print("Sentiment:", classify_sentiment(sample))
+# The new user question we want the model to answer  
+new_question = "Explain the difference between deep copy and shallow copy in Python."  
+
+# Append the new question to the prompt, leaving the assistant’s response open  
+full_prompt = few_shot_prompt + f"User: {new_question}\nAssistant:"  
+
+# Call the ChatCompletion endpoint with the constructed prompt  
+response = openai.ChatCompletion.create(  
+    model="gpt-3.5-turbo",  
+    messages=[  
+        {"role": "system", "content": "You are a helpful assistant."},  
+        {"role": "user", "content": full_prompt}  
+    ],  
+    temperature=0.7,   # modest creativity  
+    max_tokens=150     # limit length of answer  
+)  
+
+# Print the assistant’s answer extracted from the API response  
+print(response["choices"][0]["message"]["content"])
 */
 
