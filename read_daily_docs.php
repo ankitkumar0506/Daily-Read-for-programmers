@@ -1,187 +1,182 @@
 <?php
-// 2026-10-06 07:53:56
+// 2026-10-07 07:29:57
 
 /* PHP
-Topic: PHP Generators
+PHP PDO Prepared Statements  
+Prepared statements allow you to execute the same SQL query repeatedly with different parameters while keeping the query structure separate from the data. This improves security by preventing SQL injection, because the database driver handles proper escaping of input values. PDO (PHP Data Objects) provides a consistent API for many databases, so the same code works with MySQL, PostgreSQL, SQLite, etc. You first prepare the statement, then bind values or pass them directly when executing. After execution you can fetch results as objects, associative arrays, or numeric arrays. Using prepared statements also often yields better performance for repeated queries because the database can cache the execution plan.
 
-Explanation:
-PHP generators provide a simple way to implement iterators without the overhead of building a full iterator class. They use the `yield` keyword to return values one at a time, preserving the function’s state between calls. This makes them memory‑efficient when dealing with large data sets or streams. Generators can also receive input values via `send()` and can handle cleanup with `finally`. They are ideal for lazy loading, pagination, or processing large files line by line.
-
-Code example with comments:
 <?php
-// A generator function that yields numbers from 1 up to $limit
-function numberSequence(int $limit): Generator {
-    for ($i = 1; $i <= $limit; $i++) {
-        // Yield the current number and pause execution
-        yield $i;
-    }
-}
+// Create a new PDO connection (adjust DSN, username, and password as needed)
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'dbpass';
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC // Fetch rows as associative arrays
+];
+$pdo = new PDO($dsn, $username, $password, $options);
 
-// Use the generator in a foreach loop
-$limit = 5;
-foreach (numberSequence($limit) as $number) {
-    // Each iteration receives the next yielded value
-    echo "Number: $number\n";
-}
+// Prepare an INSERT statement with placeholders
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
+$stmt = $pdo->prepare($sql);
 
-// Demonstrating sending a value back into the generator
-function echoGenerator(): Generator {
-    $value = yield;          // Wait for a value to be sent
-    echo "Received: $value\n";
-}
-$gen = echoGenerator();
-$gen->next();               // Advance to the first yield
-$gen->send('Hello PHP');    // Send a value back into the generator
+// Bind values to the named parameters and execute
+$stmt->execute([
+    ':username' => 'alice',
+    ':email'    => 'alice@example.com'
+]);
+
+// Prepare a SELECT statement to retrieve the newly inserted row
+$selectSql = 'SELECT id, username, email, created_at FROM users WHERE username = :username';
+$selectStmt = $pdo->prepare($selectSql);
+$selectStmt->execute([':username' => 'alice']);
+
+// Fetch the result as an associative array
+$user = $selectStmt->fetch();
+
+echo 'User ID: ' . $user['id'] . PHP_EOL;
+echo 'Username: ' . $user['username'] . PHP_EOL;
+echo 'Email: ' . $user['email'] . PHP_EOL;
+echo 'Created At: ' . $user['created_at'] . PHP_EOL;
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container and Automatic Dependency Resolution
+Topic: Laravel Service Container and Automatic Dependency Injection
 
-Explanation:  
-The Laravel service container is a powerful tool that manages class dependencies and performs dependency injection automatically. When a class or controller declares its required services in the constructor, the container resolves and injects the appropriate instances. You can bind interfaces to concrete implementations in a service provider, allowing you to swap implementations without changing dependent code. The container also supports contextual binding, which lets you define different implementations for the same interface based on the consuming class. This mechanism promotes loose coupling, easier testing, and cleaner architecture throughout the application.
+Explanation:
+The Laravel service container is a powerful tool that manages class dependencies and performs dependency injection automatically. By binding interfaces to concrete implementations, you decouple your code and make it easier to test. When a class is resolved from the container, Laravel inspects its constructor and injects the required dependencies. This mechanism works transparently for controllers, event listeners, jobs, and any class resolved via the container. Using the container promotes a clean, maintainable architecture and adheres to the SOLID principles.
 
 Code Example:
+// app/Contracts/PaymentGateway.php
+<?php
+namespace App\Contracts;
+interface PaymentGateway
+{
+    public function charge(float $amount);
+}
 
+// app/Services/StripePaymentGateway.php
+<?php
+namespace App\Services;
+use App\Contracts\PaymentGateway;
+class StripePaymentGateway implements PaymentGateway
+{
+    public function charge(float $amount)
+    {
+        // Logic to charge via Stripe API
+        return "Charged $$amount using Stripe.";
+    }
+}
+
+// app/Providers/AppServiceProvider.php
 <?php
 namespace App\Providers;
-
 use Illuminate\Support\ServiceProvider;
-use App\Contracts\UserRepositoryInterface;
-use App\Repositories\EloquentUserRepository;
-
-class RepositoryServiceProvider extends ServiceProvider
+use App\Contracts\PaymentGateway;
+use App\Services\StripePaymentGateway;
+class AppServiceProvider extends ServiceProvider
 {
     public function register()
     {
-        // Bind the interface to a concrete class so the container knows what to inject
-        $this->app->bind(UserRepositoryInterface::class, EloquentUserRepository::class);
+        // Bind the interface to the concrete implementation
+        $this->app->bind(PaymentGateway::class, StripePaymentGateway::class);
     }
 }
-?>
 
-<?php
-namespace App\Contracts;
-
-interface UserRepositoryInterface
-{
-    public function find($id);
-}
-?>
-
-<?php
-namespace App\Repositories;
-
-use App\Contracts\UserRepositoryInterface;
-use App\Models\User;
-
-class EloquentUserRepository implements UserRepositoryInterface
-{
-    // The container will automatically inject the User model if needed
-    public function find($id)
-    {
-        return User::findOrFail($id);
-    }
-}
-?>
-
+// app/Http/Controllers/OrderController.php
 <?php
 namespace App\Http\Controllers;
-
-use App\Contracts\UserRepositoryInterface;
+use App\Contracts\PaymentGateway;
 use Illuminate\Http\Request;
-
-class UserController extends Controller
+class OrderController extends Controller
 {
-    protected $users;
-
-    // The service container automatically resolves the concrete implementation
-    public function __construct(UserRepositoryInterface $users)
+    protected $paymentGateway;
+    // Laravel automatically injects the bound implementation
+    public function __construct(PaymentGateway $paymentGateway)
     {
-        $this->users = $users;
+        $this->paymentGateway = $paymentGateway;
     }
-
-    public function show($id)
+    public function store(Request $request)
     {
-        $user = $this->users->find($id);
-        return view('users.show', compact('user'));
+        $amount = $request->input('total');
+        $result = $this->paymentGateway->charge($amount);
+        return response()->json(['message' => $result]);
     }
 }
-?>
 */
 
 /* MySQL
-Topic: Generated (Virtual) Columns in MySQL  
+Topic: MySQL Stored Procedures  
 
 Explanation:  
-Generated columns let you define a column whose value is computed automatically from other columns in the same row. They can be declared as VIRTUAL (calculated on the fly) or STORED (computed once and persisted). This feature is useful for denormalizing data, creating indexes on expressions, or enforcing derived values without extra application logic. A generated column can reference other columns, use functions, and be part of constraints or indexes. Changing the source columns automatically updates the generated value, ensuring data consistency.
+A stored procedure is a named set of SQL statements that are stored in the database server and can be executed repeatedly.  
+It allows you to encapsulate complex logic, loop constructs, and conditional flow without moving data to the application layer.  
+Parameters can be passed in (IN), out (OUT), or both (INOUT) to exchange values with the caller.  
+Using stored procedures improves performance by reducing network round‑trips and enables better security through privilege control.  
+They are especially useful for batch processing, data validation, and implementing business rules directly in the database.  
 
-Code example with comments:
+Code example with comments:  
 
-CREATE TABLE orders (
-    order_id INT AUTO_INCREMENT PRIMARY KEY,
-    quantity INT NOT NULL,
-    unit_price DECIMAL(10,2) NOT NULL,
-    -- total_price is calculated as quantity multiplied by unit_price
-    total_price DECIMAL(12,2) AS (quantity * unit_price) STORED,
-    -- price_category is a virtual column that categorizes the order based on total_price
-    price_category VARCHAR(10) AS (
-        CASE 
-            WHEN (quantity * unit_price) >= 1000 THEN 'HIGH'
-            WHEN (quantity * unit_price) >= 500  THEN 'MEDIUM'
-            ELSE 'LOW'
-        END
-    ) VIRTUAL,
-    -- index on the virtual column to speed up queries filtering by category
-    INDEX idx_price_category (price_category)
-);
+CREATE PROCEDURE GetTopCustomers (  
+    IN p_limit INT,                 -- number of rows to return  
+    OUT p_total INT)                -- total number of customers in the result set  
+BEGIN  
+    -- Declare a local variable to hold the count  
+    DECLARE v_count INT;  
 
--- Insert a sample row; total_price is filled automatically, price_category is computed on read
-INSERT INTO orders (quantity, unit_price) VALUES (20, 30.00);
+    -- Calculate the total number of customers that meet the criteria  
+    SELECT COUNT(*) INTO v_count  
+    FROM customers  
+    WHERE status = 'active';  
 
--- Query showing the generated values
-SELECT order_id, quantity, unit_price, total_price, price_category
-FROM orders
-WHERE price_category = 'MEDIUM';
+    SET p_total = v_count;  
+
+    -- Return the top N active customers ordered by total_spent  
+    SELECT customer_id, name, total_spent  
+    FROM customers  
+    WHERE status = 'active'  
+    ORDER BY total_spent DESC  
+    LIMIT p_limit;  
+END;  
+
+
+
+-- Example call:  
+CALL GetTopCustomers(5, @totalCustomers);  
+SELECT @totalCustomers AS total_active_customers;  
 */
 
 /* JavaScript
-Topic: Event Loop, Call Stack, and Microtasks
+Topic: Closures in JavaScript
 
-Explanation:
-The JavaScript runtime executes code on a single thread using a call stack. When asynchronous operations complete, their callbacks are placed in queues. The macrotask queue (e.g., setTimeout) is processed after the current stack empties, while the microtask queue (e.g., Promise callbacks) is processed immediately after each stack frame, before any macrotasks. This ordering guarantees that promise resolutions run before the next timer or I/O callback. Understanding this flow helps avoid surprising timing bugs and enables fine‑grained control of async code.
+Explanation:  
+A closure is created when an inner function accesses variables from an outer function that has already finished execution. The inner function retains a reference to the outer scope’s variables, preserving their values across multiple calls. This mechanism enables data encapsulation, private state, and function factories. Closures are fundamental for patterns such as currying, memoization, and module design. Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state.
 
-Code example:
-// Synchronous log
-console.log('Start');
+Code example with comments:  
+function makeCounter(start) {               // outer function defines a private variable
+    let count = start;                     // this variable is captured by the inner function
+    return function() {                    // the inner function forms a closure over count
+        count += 1;                         // modify the private count each time it's called
+        return count;                       // expose the updated value
+    };
+}
+const counterA = makeCounter(0);            // create a new counter instance
+console.log(counterA()); // 1               // first call, count becomes 1
+console.log(counterA()); // 2               // second call, count becomes 2
 
-// Queue a macrotask with setTimeout
-setTimeout(() => {
-    console.log('Macrotask: setTimeout');
-}, 0);
-
-// Queue a microtask with a resolved Promise
-Promise.resolve().then(() => {
-    console.log('Microtask: Promise.then');
-});
-
-// Another synchronous log
-console.log('End');
-
-// Expected output order:
-// Start
-// End
-// Microtask: Promise.then   <-- runs after the stack clears, before setTimeout
-// Macrotask: setTimeout     <-- runs after all microtasks are processed.
+const counterB = makeCounter(10);           // a separate instance with its own private count
+console.log(counterB()); // 11              // independent of counterA's state
+console.log(counterA()); // 3               // counterA continues where it left off  
 */
 
 /* AI
-Topic: Prompt Engineering for Few‑Shot Learning with OpenAI’s ChatCompletion API  
+Topic: Few‑Shot Prompt Engineering with GPT‑4  
 
 Explanation:  
-Few‑shot prompting lets you teach a language model a new task by providing a handful of example input‑output pairs inside the prompt. By carefully formatting these examples, you can guide the model to produce consistent, high‑quality responses without any fine‑tuning. This technique is especially useful when you have limited labeled data or need rapid prototyping. The prompt must include clear delimiters, a concise task description, and the examples in the same style you expect from the model. Adjusting temperature, max tokens, and stop sequences further refines the output behavior.
+Few‑shot prompting supplies the model with a small number of example input‑output pairs, guiding it toward the desired behavior without any fine‑tuning. By carefully choosing diverse and representative examples, you can steer the model to follow specific formats, apply domain‑specific logic, or emulate a particular tone. This technique works especially well with large language models like GPT‑4, which can infer patterns from just a handful of demonstrations. The prompt typically consists of a system message (defining the role), several user‑assistant exchanges as examples, and finally the new user query. Adjusting the number and quality of examples can dramatically affect accuracy and consistency.  
 
-Code example (Python, using the openai library):
+Code example (Python, using OpenAI’s Chat Completion API):
 
 import os
 import openai
@@ -189,39 +184,35 @@ import openai
 # Load your OpenAI API key from an environment variable
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def get_sentiment(review_text):
-    """
-    Uses a few‑shot prompt to classify the sentiment of a product review.
-    Returns "Positive", "Negative", or "Neutral".
-    """
-    # Construct the prompt with three examples and the new input
-    prompt = (
-        "Classify the sentiment of the following product reviews as Positive, Negative, or Neutral.\n\n"
-        "Review: I love this phone! The battery lasts all day and the camera is amazing.\n"
-        "Sentiment: Positive\n\n"
-        "Review: The laptop overheats quickly and the screen flickers.\n"
-        "Sentiment: Negative\n\n"
-        "Review: It's an okay tablet; does what I need but nothing special.\n"
-        "Sentiment: Neutral\n\n"
-        f"Review: {review_text}\n"
-        "Sentiment:"
-    )
+def few_shot_translate(text):
+    # Construct a few‑shot prompt: system message + three examples + new query
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant that translates English sentences into French, preserving tone and style."},
+        # Example 1
+        {"role": "user", "content": "Good morning, how are you?"},
+        {"role": "assistant", "content": "Bonjour, comment ça va ?"},
+        # Example 2
+        {"role": "user", "content": "I would like to book a table for two at 7 pm."},
+        {"role": "assistant", "content": "Je voudrais réserver une table pour deux à 19h."},
+        # Example 3
+        {"role": "user", "content": "The weather looks perfect for a hike."},
+        {"role": "assistant", "content": "Le temps semble parfait pour une randonnée."},
+        # New user request
+        {"role": "user", "content": text}
+    ]
 
     response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,          # deterministic output for classification
-        max_tokens=10,
-        stop=["\n"]               # stop after the sentiment label
+        model="gpt-4o-mini",          # choose the appropriate GPT‑4 model
+        messages=messages,
+        temperature=0.2               # low temperature for more deterministic output
     )
-
-    # Extract and clean the model's answer
-    sentiment = response.choices[0].message.content.strip()
-    return sentiment
+    # Extract and return the assistant’s reply
+    return response.choices[0].message.content.strip()
 
 # Example usage
-if __name__ == "__main__":
-    sample = "The headphones fit comfortably, but the sound quality is disappointing."
-    print("Sentiment:", get_sentiment(sample))   # Expected output: Negative  
+english_sentence = "Could you please send me the latest sales report by Friday?"
+french_translation = few_shot_translate(english_sentence)
+print("English:", english_sentence)
+print("French :", french_translation)
 */
 
