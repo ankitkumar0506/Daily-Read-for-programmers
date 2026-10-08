@@ -1,218 +1,206 @@
 <?php
-// 2026-10-07 07:29:57
+// 2026-10-08 07:46:34
 
 /* PHP
-PHP PDO Prepared Statements  
-Prepared statements allow you to execute the same SQL query repeatedly with different parameters while keeping the query structure separate from the data. This improves security by preventing SQL injection, because the database driver handles proper escaping of input values. PDO (PHP Data Objects) provides a consistent API for many databases, so the same code works with MySQL, PostgreSQL, SQLite, etc. You first prepare the statement, then bind values or pass them directly when executing. After execution you can fetch results as objects, associative arrays, or numeric arrays. Using prepared statements also often yields better performance for repeated queries because the database can cache the execution plan.
+Topic: PDO Prepared Statements for Secure Database Access  
+
+Explanation:  
+1. PDO (PHP Data Objects) provides a uniform interface for accessing different databases.  
+2. Prepared statements separate SQL logic from data, preventing SQL injection attacks.  
+3. They allow the database engine to parse the query once and execute it multiple times with different parameters.  
+4. Binding parameters can be done by name or by position, improving readability and maintainability.  
+5. Error handling with PDO can be configured to throw exceptions, making debugging easier.  
+
+Code Example (MySQL connection, insert with named parameters):  
 
 <?php
-// Create a new PDO connection (adjust DSN, username, and password as needed)
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$username = 'dbuser';
-$password = 'dbpass';
+// Enable exceptions for PDO errors
 $options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC // Fetch rows as associative arrays
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
 ];
-$pdo = new PDO($dsn, $username, $password, $options);
 
-// Prepare an INSERT statement with placeholders
-$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
+// Create a new PDO instance (replace placeholders with actual credentials)
+$pdo = new PDO('mysql:host=localhost;dbname=sample_db;charset=utf8mb4', 'db_user', 'db_pass', $options);
+
+// Define an INSERT query with named placeholders
+$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())";
+
+// Prepare the statement once
 $stmt = $pdo->prepare($sql);
 
-// Bind values to the named parameters and execute
-$stmt->execute([
-    ':username' => 'alice',
-    ':email'    => 'alice@example.com'
-]);
+// Sample data to insert
+$data = [
+    ':username' => 'johndoe',
+    ':email'    => 'john.doe@example.com'
+];
 
-// Prepare a SELECT statement to retrieve the newly inserted row
-$selectSql = 'SELECT id, username, email, created_at FROM users WHERE username = :username';
-$selectStmt = $pdo->prepare($selectSql);
-$selectStmt->execute([':username' => 'alice']);
+// Execute the prepared statement with bound values
+$stmt->execute($data);
 
-// Fetch the result as an associative array
-$user = $selectStmt->fetch();
+// Retrieve the ID of the newly inserted row
+$newUserId = $pdo->lastInsertId();
 
-echo 'User ID: ' . $user['id'] . PHP_EOL;
-echo 'Username: ' . $user['username'] . PHP_EOL;
-echo 'Email: ' . $user['email'] . PHP_EOL;
-echo 'Created At: ' . $user['created_at'] . PHP_EOL;
+echo "New user inserted with ID: " . $newUserId;
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container and Automatic Dependency Injection
+Laravel Queues with Redis  
 
-Explanation:
-The Laravel service container is a powerful tool that manages class dependencies and performs dependency injection automatically. By binding interfaces to concrete implementations, you decouple your code and make it easier to test. When a class is resolved from the container, Laravel inspects its constructor and injects the required dependencies. This mechanism works transparently for controllers, event listeners, jobs, and any class resolved via the container. Using the container promotes a clean, maintainable architecture and adheres to the SOLID principles.
+The queue system allows time‑consuming tasks to be processed in the background, keeping web requests fast. Laravel supports many drivers; Redis provides an in‑memory, high‑performance backend ideal for real‑time applications. Jobs are simple PHP classes that implement the ShouldQueue interface and are pushed onto the Redis queue with the dispatch helper. Workers listen to the queue, retrieve jobs, and execute their handle method. By configuring retry attempts and timeout values, you can build robust, fault‑tolerant background processing.  
 
-Code Example:
-// app/Contracts/PaymentGateway.php
-<?php
-namespace App\Contracts;
-interface PaymentGateway
-{
-    public function charge(float $amount);
-}
+// app/Jobs/SendWelcomeEmail.php  
+<?php  
 
-// app/Services/StripePaymentGateway.php
-<?php
-namespace App\Services;
-use App\Contracts\PaymentGateway;
-class StripePaymentGateway implements PaymentGateway
-{
-    public function charge(float $amount)
-    {
-        // Logic to charge via Stripe API
-        return "Charged $$amount using Stripe.";
-    }
-}
+namespace App\Jobs;  
 
-// app/Providers/AppServiceProvider.php
-<?php
-namespace App\Providers;
-use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;
-use App\Services\StripePaymentGateway;
-class AppServiceProvider extends ServiceProvider
-{
-    public function register()
-    {
-        // Bind the interface to the concrete implementation
-        $this->app->bind(PaymentGateway::class, StripePaymentGateway::class);
-    }
-}
+use Illuminate\Bus\Queueable;  
+use Illuminate\Contracts\Queue\ShouldQueue;  
+use Illuminate\Foundation\Bus\Dispatchable;  
+use Illuminate\Queue\InteractsWithQueue;  
+use Illuminate\Queue\SerializesModels;  
+use App\Mail\WelcomeMail;  
+use Mail;  
 
-// app/Http/Controllers/OrderController.php
-<?php
-namespace App\Http\Controllers;
-use App\Contracts\PaymentGateway;
-use Illuminate\Http\Request;
-class OrderController extends Controller
-{
-    protected $paymentGateway;
-    // Laravel automatically injects the bound implementation
-    public function __construct(PaymentGateway $paymentGateway)
-    {
-        $this->paymentGateway = $paymentGateway;
-    }
-    public function store(Request $request)
-    {
-        $amount = $request->input('total');
-        $result = $this->paymentGateway->charge($amount);
-        return response()->json(['message' => $result]);
-    }
-}
+class SendWelcomeEmail implements ShouldQueue  
+{  
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;  
+
+    protected $user; // The user instance to receive the email  
+
+    /**  
+     * Create a new job instance.  
+     * @param  \App\Models\User  $user  
+     */  
+    public function __construct($user)  
+    {  
+        $this->user = $user;  
+    }  
+
+    /**  
+     * Execute the job.  
+     */  
+    public function handle()  
+    {  
+        // Send the welcome email using a mailable class  
+        Mail::to($this->user->email)->send(new WelcomeMail($this->user));  
+    }  
+
+    /**  
+     * The number of times the job may be attempted.  
+     */  
+    public function retryUntil()  
+    {  
+        return now()->addMinutes(10); // give up after 10 minutes  
+    }  
+}  
+
+// Dispatching the job from a controller or event  
+use App\Jobs\SendWelcomeEmail;  
+
+// $user is an instance of App\Models\User  
+SendWelcomeEmail::dispatch($user)->onQueue('emails'); // place job on the 'emails' queue  
+
+// Terminal command to start a worker listening to the Redis queue  
+php artisan queue:work redis --queue=emails --tries=3  
+
+// .env configuration for Redis queue driver  
+QUEUE_CONNECTION=redis  
+REDIS_HOST=127.0.0.1  
+REDIS_PASSWORD=null  
+REDIS_PORT=6379  
 */
 
 /* MySQL
-Topic: MySQL Stored Procedures  
+Topic: Common Table Expressions (CTEs) and Recursive Queries
 
-Explanation:  
-A stored procedure is a named set of SQL statements that are stored in the database server and can be executed repeatedly.  
-It allows you to encapsulate complex logic, loop constructs, and conditional flow without moving data to the application layer.  
-Parameters can be passed in (IN), out (OUT), or both (INOUT) to exchange values with the caller.  
-Using stored procedures improves performance by reducing network round‑trips and enables better security through privilege control.  
-They are especially useful for batch processing, data validation, and implementing business rules directly in the database.  
+Explanation:
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. CTEs are defined using the WITH clause and improve readability by allowing you to break complex queries into logical building blocks. Recursive CTEs enable you to query hierarchical data such as organizational charts or folder structures by repeatedly referencing the CTE itself. They are processed before the main query, so you can use the CTE multiple times within the same statement. CTEs are scoped to the statement in which they appear and do not persist beyond it.
 
-Code example with comments:  
+Code example (MySQL 8.0+):
+WITH RECURSIVE org_chart AS ( 
+    -- Anchor member: start with the top‑level manager (id = 1) 
+    SELECT employee_id, manager_id, employee_name, 1 AS level 
+    FROM employees 
+    WHERE employee_id = 1 
+    UNION ALL 
+    -- Recursive member: find employees whose manager is in the previous level 
+    SELECT e.employee_id, e.manager_id, e.employee_name, oc.level + 1 
+    FROM employees e 
+    INNER JOIN org_chart oc ON e.manager_id = oc.employee_id 
+) 
+SELECT employee_id, manager_id, employee_name, level 
+FROM org_chart 
+ORDER BY level, manager_id; 
 
-CREATE PROCEDURE GetTopCustomers (  
-    IN p_limit INT,                 -- number of rows to return  
-    OUT p_total INT)                -- total number of customers in the result set  
-BEGIN  
-    -- Declare a local variable to hold the count  
-    DECLARE v_count INT;  
-
-    -- Calculate the total number of customers that meet the criteria  
-    SELECT COUNT(*) INTO v_count  
-    FROM customers  
-    WHERE status = 'active';  
-
-    SET p_total = v_count;  
-
-    -- Return the top N active customers ordered by total_spent  
-    SELECT customer_id, name, total_spent  
-    FROM customers  
-    WHERE status = 'active'  
-    ORDER BY total_spent DESC  
-    LIMIT p_limit;  
-END;  
-
-
-
--- Example call:  
-CALL GetTopCustomers(5, @totalCustomers);  
-SELECT @totalCustomers AS total_active_customers;  
+-- The query returns the entire hierarchy starting from the CEO (id = 1), 
+-- showing each employee's level in the organization.
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: JavaScript Closures
 
 Explanation:  
-A closure is created when an inner function accesses variables from an outer function that has already finished execution. The inner function retains a reference to the outer scope’s variables, preserving their values across multiple calls. This mechanism enables data encapsulation, private state, and function factories. Closures are fundamental for patterns such as currying, memoization, and module design. Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state.
+A closure is a function that retains access to the variables of its outer (enclosing) scope even after that outer function has finished executing. This happens because the inner function forms a lexical environment that captures the surrounding variables. Closures are useful for data privacy, creating function factories, and maintaining state between calls without using global variables. They rely on JavaScript’s function scope and the fact that functions are first‑class objects. Understanding closures helps avoid common pitfalls with asynchronous code and loops.
 
 Code example with comments:  
-function makeCounter(start) {               // outer function defines a private variable
-    let count = start;                     // this variable is captured by the inner function
-    return function() {                    // the inner function forms a closure over count
-        count += 1;                         // modify the private count each time it's called
-        return count;                       // expose the updated value
+function makeCounter() {                     // outer function creates a private variable
+    let count = 0;                           // this variable is captured by the inner function
+    return function() {                     // the inner function forms a closure
+        count += 1;                          // it can read and modify count each call
+        console.log('Current count:', count);
     };
 }
-const counterA = makeCounter(0);            // create a new counter instance
-console.log(counterA()); // 1               // first call, count becomes 1
-console.log(counterA()); // 2               // second call, count becomes 2
 
-const counterB = makeCounter(10);           // a separate instance with its own private count
-console.log(counterB()); // 11              // independent of counterA's state
-console.log(counterA()); // 3               // counterA continues where it left off  
+const counterA = makeCounter();              // each call to makeCounter gets its own closure
+const counterB = makeCounter();
+
+counterA();   // Current count: 1
+counterA();   // Current count: 2
+counterB();   // Current count: 1   (separate closure, independent state)
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with GPT‑4  
+Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
 
 Explanation:  
-Few‑shot prompting supplies the model with a small number of example input‑output pairs, guiding it toward the desired behavior without any fine‑tuning. By carefully choosing diverse and representative examples, you can steer the model to follow specific formats, apply domain‑specific logic, or emulate a particular tone. This technique works especially well with large language models like GPT‑4, which can infer patterns from just a handful of demonstrations. The prompt typically consists of a system message (defining the role), several user‑assistant exchanges as examples, and finally the new user query. Adjusting the number and quality of examples can dramatically affect accuracy and consistency.  
+Few‑shot prompting supplies a small set of example input‑output pairs inside the prompt so the model can infer the desired pattern without fine‑tuning. By framing the task as a conversation, you can guide the model to behave like a specific tool or role (e.g., a code reviewer). The examples act as “in‑context” training data, which the model uses to predict the next response. This technique works well for classification, transformation, or generation tasks where a full dataset is unavailable. Adjust the temperature and max_tokens to balance creativity and precision.
 
-Code example (Python, using OpenAI’s Chat Completion API):
+Code example (Python, using the openai library):
 
 import os
 import openai
 
-# Load your OpenAI API key from an environment variable
+# Load your API key from an environment variable or directly assign it
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def few_shot_translate(text):
-    # Construct a few‑shot prompt: system message + three examples + new query
-    messages = [
-        {"role": "system", "content": "You are a helpful assistant that translates English sentences into French, preserving tone and style."},
-        # Example 1
-        {"role": "user", "content": "Good morning, how are you?"},
-        {"role": "assistant", "content": "Bonjour, comment ça va ?"},
-        # Example 2
-        {"role": "user", "content": "I would like to book a table for two at 7 pm."},
-        {"role": "assistant", "content": "Je voudrais réserver une table pour deux à 19h."},
-        # Example 3
-        {"role": "user", "content": "The weather looks perfect for a hike."},
-        {"role": "assistant", "content": "Le temps semble parfait pour une randonnée."},
-        # New user request
-        {"role": "user", "content": text}
-    ]
+# Define a few‑shot prompt that shows how to convert a list of numbers into a sorted, unique list
+system_message = {"role": "system", "content": "You are a helpful assistant that formats lists of integers."}
+example_user_1 = {"role": "user", "content": "Input: [3, 1, 2, 3]\nOutput:"}
+example_assistant_1 = {"role": "assistant", "content": "[1, 2, 3]"}
+example_user_2 = {"role": "user", "content": "Input: [10, 5, 5, 8]\nOutput:"}
+example_assistant_2 = {"role": "assistant", "content": "[5, 8, 10]"}
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",          # choose the appropriate GPT‑4 model
-        messages=messages,
-        temperature=0.2               # low temperature for more deterministic output
-    )
-    # Extract and return the assistant’s reply
-    return response.choices[0].message.content.strip()
+# New query we want the model to answer
+new_query = {"role": "user", "content": "Input: [7, 2, 7, 4]\nOutput:"}
 
-# Example usage
-english_sentence = "Could you please send me the latest sales report by Friday?"
-french_translation = few_shot_translate(english_sentence)
-print("English:", english_sentence)
-print("French :", french_translation)
+# Assemble the message list in the order: system, examples, new query
+messages = [
+    system_message,
+    example_user_1, example_assistant_1,
+    example_user_2, example_assistant_2,
+    new_query
+]
+
+response = openai.ChatCompletion.create(
+    model="gpt-4o-mini",      # Choose a model that supports chat completions
+    messages=messages,
+    temperature=0.0,          # Deterministic output for exact formatting
+    max_tokens=20             # Small limit because the answer is short
+)
+
+# Print the model’s answer (the formatted list)
+print(response.choices[0].message.content.strip())   # Expected output: [2, 4, 7]
 */
 
