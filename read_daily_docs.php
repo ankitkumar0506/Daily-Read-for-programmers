@@ -1,194 +1,267 @@
 <?php
-// 2026-10-09 07:44:02
+// 2026-10-10 07:31:57
 
 /* PHP
-Topic: PHP Generators  
-Explanation:  
-Generators allow you to create iterators without building an entire array in memory. They use the `yield` keyword to return values one at a time, pausing execution until the next value is requested. This makes them ideal for processing large data sets, streams, or any situation where you want lazy evaluation. A generator function returns an object that implements the Iterator interface, so it can be used in `foreach` loops just like an array. Because the state is preserved between yields, you can maintain complex logic while keeping memory usage low.  
+Topic: Using Prepared Statements with PDO for Secure Database Access
 
-Code example (with inline comments):  
+Explanation:
+Prepared statements separate SQL logic from data, preventing SQL injection attacks. PDO (PHP Data Objects) provides a uniform interface for many database systems, making code portable. You first prepare the SQL with placeholders, then bind values and execute. This approach also improves performance when the same statement runs multiple times with different parameters. Errors can be caught via exceptions, allowing graceful handling of database issues.
 
-<?php  
-function rangeGenerator(int $start, int $end) {  
-    // Loop from start to end, yielding each number  
-    for ($i = $start; $i <= $end; $i++) {  
-        yield $i;               // Return the current value and pause execution  
-    }  
-}  
+Code Example:
+// Create a PDO instance (replace DSN, username, password with real credentials)
+$pdo = new PDO('mysql:host=localhost;dbname=example_db;charset=utf8mb4', 'db_user', 'db_pass');
+// Enable exceptions for error handling
+$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-// Consume the generator with a foreach loop  
-foreach (rangeGenerator(1, 5) as $number) {  
-    echo $number . PHP_EOL;    // Output: 1 2 3 4 5, each on a new line  
-}  
-?>
+// Define the SQL with named placeholders
+$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())";
+
+// Prepare the statement once
+$stmt = $pdo->prepare($sql);
+
+// Sample data to insert
+$data = [
+    ['username' => 'alice',   'email' => 'alice@example.com'],
+    ['username' => 'bob',     'email' => 'bob@example.com'],
+    ['username' => 'charlie', 'email' => 'charlie@example.com']
+];
+
+// Loop through data and execute the prepared statement for each row
+foreach ($data as $row) {
+    // Bind values to the named placeholders and execute
+    $stmt->execute([
+        ':username' => $row['username'],
+        ':email'    => $row['email']
+    ]);
+}
+
+// Fetch rows using a prepared SELECT statement
+$select = $pdo->prepare("SELECT id, username, email FROM users WHERE email LIKE :domain");
+$select->execute([':domain' => '%@example.com']);
+$users = $select->fetchAll(PDO::FETCH_ASSOC);
+
+// Output the retrieved users
+foreach ($users as $user) {
+    echo "ID: {$user['id']}, Username: {$user['username']}, Email: {$user['email']}\n";
+}
 */
 
 /* Laravel
-Topic: Laravel Queues and Jobs
+Topic: Laravel Service Container and Dependency Injection  
 
 Explanation:  
-Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or making API calls to a background process, keeping the HTTP request fast.  
-A job class defines the work to be performed and can be dispatched to any supported queue driver (database, Redis, SQS, etc.).  
-When a job is dispatched, Laravel serializes the job’s data and pushes it onto the chosen queue.  
-Workers listen to the queue, pull jobs, unserialize them, and execute the handle() method.  
-If a job fails, Laravel can automatically retry it a configurable number of times and log the failure for later inspection.
+- The service container is the core of Laravel’s inversion of control (IoC) system, managing class dependencies and performing automatic resolution.  
+- When a class type‑hints another class in its constructor, the container resolves and injects an instance automatically.  
+- You can bind abstractions (interfaces) to concrete implementations, allowing you to swap implementations without changing dependent code.  
+- Singleton bindings ensure the same instance is reused throughout the request lifecycle.  
+- The container can be accessed via the `app()` helper or type‑hinted in controller methods, routes, or jobs.  
 
-Code example (Job class and dispatching it):
+Code Example:  
 
 <?php
-namespace App\Jobs;
+namespace App\Services;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use App\Mail\WelcomeMail;
-use Mail;
-
-class SendWelcomeEmail implements ShouldQueue
+interface PaymentGatewayContract
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    public function charge(float $amount);
+}
 
-    protected $user; // The user object will be serialized onto the queue
-
-    // Constructor receives the user instance when the job is created
-    public function __construct($user)
+// Concrete implementation for Stripe
+class StripePaymentGateway implements PaymentGatewayContract
+{
+    public function charge(float $amount)
     {
-        $this->user = $user;
-    }
-
-    // This method is called by the worker when the job is processed
-    public function handle()
-    {
-        // Send the welcome email using Laravel's Mail facade
-        Mail::to($this->user->email)->send(new WelcomeMail($this->user));
+        // Here you would call Stripe’s API
+        return "Charged \${$amount} via Stripe.";
     }
 }
 
-// Dispatching the job from a controller or service
-use App\Jobs\SendWelcomeEmail;
-
-public function register(Request $request)
+// Concrete implementation for PayPal
+class PayPalPaymentGateway implements PaymentGatewayContract
 {
-    // Validation and user creation logic here...
-    $user = User::create($request->all());
-
-    // Push the email job onto the default queue
-    SendWelcomeEmail::dispatch($user);
-
-    return response()->json(['message' => 'User registered, welcome email queued.']);
+    public function charge(float $amount)
+    {
+        // Here you would call PayPal’s API
+        return "Charged \${$amount} via PayPal.";
+    }
 }
+
+// Service Provider where bindings are defined
+namespace App\Providers;
+
+use Illuminate\Support\ServiceProvider;
+use App\Services\PaymentGatewayContract;
+use App\Services\StripePaymentGateway;
+
+class AppServiceProvider extends ServiceProvider
+{
+    public function register()
+    {
+        // Bind the interface to a concrete class
+        $this->app->bind(PaymentGatewayContract::class, function ($app) {
+            // You could decide based on config or environment
+            return new StripePaymentGateway();
+        });
+
+        // Example of a singleton binding
+        $this->app->singleton('logger', function ($app) {
+            return new \Monolog\Logger('app');
+        });
+    }
+}
+
+// Using dependency injection in a controller
+namespace App\Http\Controllers;
+
+use App\Services\PaymentGatewayContract;
+
+class OrderController extends Controller
+{
+    protected $paymentGateway;
+
+    // The container injects the concrete implementation automatically
+    public function __construct(PaymentGatewayContract $paymentGateway)
+    {
+        $this->paymentGateway = $paymentGateway;
+    }
+
+    public function store()
+    {
+        $amount = 99.99;
+        $result = $this->paymentGateway->charge($amount);
+        return response()->json(['message' => $result]);
+    }
+}
+
+// Directly resolving from the container elsewhere
+$gateway = app(PaymentGatewayContract::class);
+echo $gateway->charge(45.00); // Outputs: Charged $45 via Stripe. 
+
 ?>
 */
 
 /* MySQL
 Topic: Common Table Expressions (CTE) and Recursive Queries
 
-Explanation:  
-A Common Table Expression (CTE) is a temporary result set that can be referenced within a SELECT, INSERT, UPDATE, or DELETE statement. CTEs are defined using the WITH clause and improve query readability, especially for complex joins or hierarchical data. Recursive CTEs allow you to repeatedly execute a query on its own output, which is ideal for traversing tree‑like structures such as organizational charts or bill‑of‑materials. The recursion stops when the CTE no longer returns rows, preventing infinite loops. Using CTEs can also enable modular query building and reuse of subqueries without materializing intermediate tables.
+Explanation:
+A Common Table Expression (CTE) is a temporary result set that can be referenced within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs improve readability by allowing you to define subqueries up front and give them a meaningful name.  
+They are defined using the WITH clause and can be chained together for multiple CTEs.  
+When the CTE is recursive, it can reference itself to produce hierarchical or sequential data, such as organizational charts or number series.  
+Recursive CTEs consist of an anchor member (the starting rows) and a recursive member (the query that builds upon the previous result).  
+The recursion stops when the recursive member returns an empty set or reaches a defined limit.
 
-Code example (recursive CTE to list an employee hierarchy):
--- Define the CTE named employee_path
-WITH RECURSIVE employee_path (emp_id, emp_name, manager_id, level) AS (
-    -- Anchor member: select top‑level managers (no manager_id)
-    SELECT 
-        e.id,
-        e.name,
-        e.manager_id,
-        1 AS level
-    FROM employees e
-    WHERE e.manager_id IS NULL
-
+Code example (MySQL 8.0+):
+-- Generate a list of integers from 1 to 10 using a recursive CTE
+WITH RECURSIVE numbers AS (
+    SELECT 1 AS n                 -- Anchor member: start with 1
     UNION ALL
-
-    -- Recursive member: join employees to their managers from the previous level
-    SELECT 
-        e.id,
-        e.name,
-        e.manager_id,
-        ep.level + 1
-    FROM employees e
-    INNER JOIN employee_path ep ON e.manager_id = ep.emp_id
+    SELECT n + 1                  -- Recursive member: add 1 to the previous value
+    FROM numbers
+    WHERE n < 10                  -- Stop condition: stop when n reaches 10
 )
--- Query the CTE to display the hierarchy with indentation based on level
-SELECT 
-    CONCAT(REPEAT('    ', level - 1), emp_name) AS hierarchy_name,
-    emp_id,
-    manager_id,
-    level
-FROM employee_path
-ORDER BY level, emp_name;
+SELECT n
+FROM numbers
+ORDER BY n;                       -- Result: 1,2,3,4,5,6,7,8,9,10
+
+-- Example of a hierarchical query: retrieve an employee hierarchy
+-- Assume a table employees(id, name, manager_id)
+WITH RECURSIVE org_chart AS (
+    SELECT id, name, manager_id, 0 AS level
+    FROM employees
+    WHERE manager_id IS NULL            -- Anchor: top‑level managers
+    UNION ALL
+    SELECT e.id, e.name, e.manager_id, oc.level + 1
+    FROM employees e
+    JOIN org_chart oc ON e.manager_id = oc.id   -- Recursive join to build the tree
+)
+SELECT id, name, manager_id, level
+FROM org_chart
+ORDER BY level, manager_id;               -- Shows employees grouped by hierarchy level.
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: JavaScript Closures and Lexical Scoping
 
 Explanation:  
-A closure is created when an inner function retains access to variables from its outer (enclosing) function even after that outer function has finished executing. This allows the inner function to remember the environment in which it was created, enabling data privacy and function factories. Closures are fundamental for implementing encapsulation, partial application, and maintaining state across asynchronous operations. They are formed automatically whenever a function references variables from an outer scope. Understanding closures helps avoid common pitfalls such as unintentionally sharing mutable state between function calls.
+A closure is created when an inner function retains access to the variables of its outer (enclosing) function after that outer function has finished executing. This works because JavaScript uses lexical scoping: a function’s scope is determined by its physical location in the source code, not by where it is called. Closures enable data privacy, allowing you to expose only the functions you want while keeping internal variables hidden. They are commonly used for module patterns, partial application, and maintaining state in asynchronous callbacks. Understanding closures is essential for writing robust, memory‑efficient code.
 
-Code example with comments:  
-function makeCounter() {  
-    let count = 0;               // count is a private variable for this closure  
-    return function() {         // the inner function forms a closure over count  
-        count += 1;              // modifies the enclosed count variable  
-        console.log('Current count:', count);  
-    };  
-}  
+Code example:  
+function createCounter(initial) {               // outer function with a private variable  
+    let count = initial;                        // this variable is captured by the inner function  
 
-const counterA = makeCounter(); // each call to makeCounter creates a new closure  
-const counterB = makeCounter();  
+    return function increment(step = 1) {       // inner function forms a closure over count  
+        count += step;                          // can read and modify the captured variable  
+        console.log('Current count:', count);  // side effect: display the current value  
+        return count;                           // return the updated count  
+    };                                           // end of inner function  
 
-counterA(); // Output: Current count: 1  
-counterA(); // Output: Current count: 2  
-counterB(); // Output: Current count: 1   (independent state from counterA)  
+}                                                // end of outer function  
+
+const counterA = createCounter(0);               // each call creates a separate closure  
+counterA();           // Current count: 1  
+counterA(5);          // Current count: 6  
+
+const counterB = createCounter(10);              // independent private state  
+counterB(2);          // Current count: 12  
+counterB();           // Current count: 13   (counterA’s count is unaffected)
 */
 
 /* AI
-Topic: Chain‑of‑Thought Prompting with OpenAI’s ChatCompletion API
+Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
 
 Explanation:  
-Chain‑of‑thought (CoT) prompting encourages the model to generate intermediate reasoning steps before arriving at a final answer, improving performance on complex problems such as math or logic puzzles. By explicitly asking the model to “think step‑by‑step,” you guide it to produce a structured reasoning trace that can be verified or edited. This technique works well with the ChatCompletion endpoint because you can provide a system message that defines the style and a user message that contains the problem. The model’s response will contain the reasoning steps followed by the answer, making it easier to debug or extract the result programmatically.
+Few‑shot prompting supplies the model with a handful of example interactions that illustrate the desired behavior, letting it infer the pattern without fine‑tuning. By placing the examples in the system or user messages, you guide the model to generate outputs that follow the same format, tone, or logic. This technique works well for tasks like data extraction, style transfer, or custom Q&A where a full dataset for training is unavailable. The prompt must be concise yet clear, and the examples should cover edge cases you expect the model to handle. Adjusting temperature and max_tokens helps control creativity versus precision in the generated response.  
 
-Code example (Python, using the openai library):
+Code example (Python, using the openai library):  
 
-import os
-import openai
+import openai  
 
-# Load your API key from an environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Set your OpenAI API key (replace with your actual key or use env variable)  
+openai.api_key = "sk-YOUR_API_KEY"  
 
-def solve_with_cot(question: str) -> str:
-    """
-    Sends a chain‑of‑thought prompt to the ChatCompletion API
-    and returns the model’s full response (reasoning + answer).
-    """
-    # System message defines the role and style
-    system_msg = {
-        "role": "system",
-        "content": "You are a helpful assistant that solves problems by thinking step‑by‑step."
-    }
+# Define a few‑shot prompt that extracts a product’s price from a description  
+few_shot_prompt = [  
+    {  
+        "role": "system",  
+        "content": "You are an assistant that extracts the price (in USD) from a product description and returns only the numeric value."  
+    },  
+    {  
+        "role": "user",  
+        "content": "The sleek wireless headphones cost $199.99 and offer noise cancellation."  
+    },  
+    {  
+        "role": "assistant",  
+        "content": "199.99"  
+    },  
+    {  
+        "role": "user",  
+        "content": "Our new coffee maker is priced at $89 and comes with a 2‑year warranty."  
+    },  
+    {  
+        "role": "assistant",  
+        "content": "89"  
+    }  
+]  
 
-    # User message contains the actual question
-    user_msg = {
-        "role": "user",
-        "content": f"Problem: {question}\nPlease solve it by showing each reasoning step before giving the final answer."
-    }
+# New query to which the model should apply the same extraction rule  
+new_query = {  
+    "role": "user",  
+    "content": "Buy the ergonomic office chair for $349.50 and enjoy free shipping."  
+}  
 
-    # Call the API with temperature low enough for reproducible reasoning
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",
-        messages=[system_msg, user_msg],
-        temperature=0.2,
-        max_tokens=500
-    )
+# Combine the prompt and the new query  
+messages = few_shot_prompt + [new_query]  
 
-    # Extract the assistant’s reply
-    answer = response.choices[0].message.content.strip()
-    return answer
+# Call the Chat Completion endpoint  
+response = openai.ChatCompletion.create(  
+    model="gpt-4o-mini",   # lightweight model suitable for structured tasks  
+    messages=messages,  
+    temperature=0.0,       # deterministic output for extraction  
+    max_tokens=10          # limit response length to the price only  
+)  
 
-# Example usage
-question = "If a train travels 150 km at 60 km/h and then 180 km at 45 km/h, what is the average speed for the whole trip?"
-print(solve_with_cot(question))
+# Print the extracted price  
+print(response.choices[0].message.content.strip())   # Expected output: 349.50  
 */
 
