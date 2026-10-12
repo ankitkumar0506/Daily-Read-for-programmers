@@ -1,119 +1,115 @@
 <?php
-// 2026-10-11 07:36:50
+// 2026-10-12 07:44:02
 
 /* PHP
-Topic: PHP PDO (PHP Data Objects) for Secure Database Access
+Topic: Using PDO for Secure Database Access with Prepared Statements and Transactions  
 
 Explanation:  
-PDO is a consistent interface for accessing different databases in PHP, allowing you to write database‑independent code.  
-It supports prepared statements, which protect against SQL injection by separating query structure from data.  
-You can fetch results in various formats (associative array, object, etc.) using flexible fetch modes.  
-Error handling is easier with exceptions, making debugging and logging more reliable.  
-PDO also provides transaction support, enabling atomic operations across multiple queries.
+PHP Data Objects (PDO) provides a consistent interface for accessing different databases. By using prepared statements, you separate SQL logic from data values, which protects against SQL injection attacks. PDO also supports transactions, allowing multiple queries to be executed atomically—either all succeed or all are rolled back. Errors can be handled with exceptions, making debugging clearer. The same PDO code can be reused with MySQL, PostgreSQL, SQLite, and other supported databases, improving portability.
 
-Code example (MySQL connection, prepared SELECT, fetching results):
+Code example (PHP):
 
 <?php
-// Data Source Name (DSN) includes driver, host, database name, and charset
-$dsn = 'mysql:host=localhost;dbname=sample_db;charset=utf8mb4';
-
-// Database credentials
+// Enable exception handling for PDO
+$dsn = 'mysql:host=localhost;dbname=shop;charset=utf8mb4';
 $username = 'db_user';
-$password = 'db_pass';
+$password = 'secure_pass';
 
 try {
-    // Create a PDO instance with exception mode enabled
+    // Create a new PDO instance with error mode set to exceptions
     $pdo = new PDO($dsn, $username, $password, [
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
 
-    // Prepare a SELECT statement with a placeholder for the user ID
-    $stmt = $pdo->prepare('SELECT id, username, email FROM users WHERE id = :id');
+    // Begin a transaction
+    $pdo->beginTransaction();
 
-    // Bind a value to the placeholder (integer type)
-    $stmt->bindValue(':id', 5, PDO::PARAM_INT);
+    // Prepare an INSERT statement with placeholders
+    $stmt = $pdo->prepare(
+        'INSERT INTO orders (user_id, total, status) VALUES (:user_id, :total, :status)'
+    );
 
-    // Execute the prepared statement
-    $stmt->execute();
+    // Bind values and execute the statement
+    $stmt->execute([
+        ':user_id' => 42,
+        ':total'   => 199.99,
+        ':status'  => 'pending',
+    ]);
 
-    // Fetch the row as an associative array
-    $user = $stmt->fetch();
+    // Get the ID of the newly inserted order
+    $orderId = $pdo->lastInsertId();
 
-    if ($user) {
-        echo 'User ID: ' . $user['id'] . PHP_EOL;
-        echo 'Username: ' . $user['username'] . PHP_EOL;
-        echo 'Email: ' . $user['email'] . PHP_EOL;
-    } else {
-        echo 'No user found with the specified ID.' . PHP_EOL;
+    // Prepare a second INSERT for order items, using the order ID
+    $itemStmt = $pdo->prepare(
+        'INSERT INTO order_items (order_id, product_id, quantity, price) 
+         VALUES (:order_id, :product_id, :quantity, :price)'
+    );
+
+    // Example items array
+    $items = [
+        ['product_id' => 7,  'quantity' => 2, 'price' => 49.99],
+        ['product_id' => 12, 'quantity' => 1, 'price' => 99.99],
+    ];
+
+    // Insert each item
+    foreach ($items as $item) {
+        $itemStmt->execute([
+            ':order_id'   => $orderId,
+            ':product_id' => $item['product_id'],
+            ':quantity'   => $item['quantity'],
+            ':price'      => $item['price'],
+        ]);
     }
-} catch (PDOException $e) {
-    // Handle connection or query errors
-    error_log('Database error: ' . $e->getMessage());
-    echo 'An error occurred while accessing the database.' . PHP_EOL;
+
+    // Commit the transaction if all queries succeeded
+    $pdo->commit();
+    echo "Order $orderId has been saved successfully.";
+} catch (Exception $e) {
+    // Roll back the transaction on error
+    if ($pdo->inTransaction()) {
+        $pdo->rollBack();
+    }
+    // Log or display the error message
+    echo "Failed to save order: " . $e->getMessage();
 }
 ?>
 */
 
 /* Laravel
-Laravel Service Container & Dependency Injection  
-The service container is Laravel’s powerful IoC (Inversion of Control) engine that resolves class dependencies automatically. It allows you to bind abstractions (interfaces) to concrete implementations, enabling loose coupling and easier testing. When a class requests a dependency in its constructor, the container injects the appropriate instance. Bindings can be singleton (single shared instance) or transient (new instance each time). The container is also used behind the scenes for route‑model binding, event listeners, and more.
+Topic: Laravel Service Container – Binding Interfaces to Implementations
 
-Example – binding an interface and resolving it via a controller:
+Explanation:  
+The Laravel service container is a powerful tool for managing class dependencies and performing dependency injection. By binding an interface to a concrete class, you tell the container which implementation to resolve when the interface is type‑hinted. This promotes loose coupling and makes testing easier, as you can swap implementations without changing the consuming code. Bindings are typically defined in a service provider’s register method. Once bound, you can resolve the interface directly from the container or let Laravel inject it automatically into controllers, jobs, or other classes.
 
-// File: app/Contracts/PaymentGateway.php
-<?php
-namespace App\Contracts;
-
-interface PaymentGateway
-{
-    public function charge(float $amount);
-}
-
-// File: app/Services/StripeGateway.php
-<?php
-namespace App\Services;
-
-use App\Contracts\PaymentGateway;
-
-class StripeGateway implements PaymentGateway
-{
-    protected $apiKey;
-
-    public function __construct(string $apiKey)
-    {
-        $this->apiKey = $apiKey; // injected configuration value
-    }
-
-    public function charge(float $amount)
-    {
-        // Here you would call Stripe’s API using $this->apiKey
-        return "Charged $$amount with Stripe.";
-    }
-}
-
-// File: app/Providers/AppServiceProvider.php
+Code example (App/Providers/AppServiceProvider.php):
 <?php
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use App\Contracts\PaymentGateway;
-use App\Services\StripeGateway;
+use App\Services\StripePaymentGateway;
 
 class AppServiceProvider extends ServiceProvider
 {
     public function register()
     {
-        // Bind the interface to a concrete class as a singleton
-        $this->app->singleton(PaymentGateway::class, function ($app) {
-            // Resolve configuration value from the container
-            $key = $app['config']['services.stripe.secret'];
-            return new StripeGateway($key);
+        // Bind the PaymentGateway interface to the StripePaymentGateway implementation
+        $this->app->bind(PaymentGateway::class, function ($app) {
+            // You can pull configuration values or other services here
+            $apiKey = config('services.stripe.secret');
+            return new StripePaymentGateway($apiKey);
         });
     }
-}
 
-// File: app/Http/Controllers/OrderController.php
+    public function boot()
+    {
+        //
+    }
+}
+?>
+
+Usage in a controller (App/Http/Controllers/OrderController.php):
 <?php
 namespace App\Http\Controllers;
 
@@ -122,142 +118,162 @@ use Illuminate\Http\Request;
 
 class OrderController extends Controller
 {
-    protected $payment;
+    protected $paymentGateway;
 
-    // The container automatically injects the bound implementation
-    public function __construct(PaymentGateway $payment)
+    // Laravel automatically injects the bound implementation
+    public function __construct(PaymentGateway $paymentGateway)
     {
-        $this->payment = $payment;
+        $this->paymentGateway = $paymentGateway;
     }
 
     public function store(Request $request)
     {
-        $amount = $request->input('total');
-        $result = $this->payment->charge($amount);
-        return response()->json(['message' => $result]);
+        $amount = $request->input('amount');
+
+        // Use the injected payment gateway to process the payment
+        $this->paymentGateway->charge($amount);
+
+        return response()->json(['status' => 'payment processed']);
     }
 }
-```
+?>
 */
 
 /* MySQL
-MySQL Topic: Common Table Expressions (CTE) and Recursive Queries
+Topic: MySQL Transactions and ACID Guarantees
 
-Explanation:
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It improves query readability by allowing you to define subqueries in a clear, named block. CTEs can be recursive, enabling hierarchical data traversal such as organizational charts or tree structures. The WITH clause introduces the CTE, and the recursive part uses UNION ALL to combine the anchor and recursive members. Recursive CTEs must contain a termination condition to avoid infinite loops.
+Explanation: 
+A transaction groups one or more SQL statements into a single logical unit of work that either fully succeeds or fully fails. 
+It ensures the ACID properties: Atomicity (all-or-nothing), Consistency (database remains valid), Isolation (concurrent transactions don’t interfere), and Durability (committed changes survive failures). 
+Using transactions you can protect critical operations such as money transfers, inventory updates, or batch inserts from partial execution. 
+You explicitly begin a transaction, execute the statements, and then either COMMIT to make changes permanent or ROLLBACK to discard them. 
+If an error occurs, rolling back restores the database to its state before the transaction started.
 
-Code Example (recursive CTE to list an employee hierarchy):
+Code example (with comments):
 
--- Define the recursive CTE named emp_hierarchy
-WITH RECURSIVE emp_hierarchy AS (
-    -- Anchor member: start with top‑level managers (no manager_id)
-    SELECT
-        employee_id,
-        employee_name,
-        manager_id,
-        1 AS level
-    FROM employees
-    WHERE manager_id IS NULL
+-- Start a new transaction
+START TRANSACTION;
 
-    UNION ALL
+-- Debit $100 from account A
+UPDATE accounts SET balance = balance - 100 WHERE account_id = 1;
 
-    -- Recursive member: join employees to their managers
-    SELECT
-        e.employee_id,
-        e.employee_name,
-        e.manager_id,
-        eh.level + 1 AS level
-    FROM employees e
-    INNER JOIN emp_hierarchy eh ON e.manager_id = eh.employee_id
-)
--- Final query: retrieve the full hierarchy ordered by level
-SELECT
-    employee_id,
-    employee_name,
-    manager_id,
-    level
-FROM emp_hierarchy
-ORDER BY level, manager_id;
+-- Credit $100 to account B
+UPDATE accounts SET balance = balance + 100 WHERE account_id = 2;
+
+-- Check that both updates affected exactly one row each
+-- (In a real application you would verify the row count in application code)
+SELECT ROW_COUNT() INTO @rows_affected;
+IF @rows_affected <> 2 THEN
+    -- Something went wrong, undo the changes
+    ROLLBACK;
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Transfer failed, transaction rolled back';
+ELSE
+    -- All good, make the changes permanent
+    COMMIT;
+END IF;
 */
 
 /* JavaScript
-Topic: Closures in JavaScript  
+Topic: Async/Await with Robust Error Handling  
 
 Explanation:  
-A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing.  
-Closures enable data encapsulation, allowing private state that cannot be reached directly from the global scope.  
-They are created each time a function is defined, capturing the current lexical environment.  
-Because the inner function holds references to the outer variables, those variables stay alive as long as the closure can be called.  
-Closures are widely used for creating factories, memoization, and event handlers that need persistent state.
+- Async/Await lets you write asynchronous code that looks and behaves like synchronous code, improving readability.  
+- An async function always returns a promise; the await keyword pauses execution until the awaited promise resolves or rejects.  
+- Proper error handling requires wrapping await calls in try/catch blocks, because a rejected promise throws an exception inside the async function.  
+- You can re‑throw errors or convert them into custom error objects to provide more context to callers.  
+- Combining multiple await calls inside a single try block lets you handle related failures together, while separate blocks isolate independent operations.  
 
-Code example:
-// outer function creates a private counter
-function createCounter(initialValue) {
-    let count = initialValue;               // this variable is private to createCounter
-    return function() {                    // the inner function forms a closure
-        count += 1;                         // it can read and modify 'count'
-        return count;                      // each call returns the updated value
-    };
-}
+Code example (plain JavaScript with comments):  
+function fetchJson(url) {  
+    return fetch(url)  
+        .then(response => {  
+            if (!response.ok) {  
+                throw new Error(`HTTP ${response.status} - ${response.statusText}`);  
+            }  
+            return response.json();  
+        });  
+}  
 
-// using the closure
-const counterA = createCounter(0);
-console.log(counterA()); // 1
-console.log(counterA()); // 2
+async function loadUserData(userId) {  
+    const endpoint = `https://api.example.com/users/${userId}`;  
 
-const counterB = createCounter(10);
-console.log(counterB()); // 11
-console.log(counterB()); // 12
+    try {  
+        // Await the promise returned by fetchJson; if it rejects, control jumps to catch  
+        const user = await fetchJson(endpoint);  
 
-// counterA and counterB maintain independent private states because each has its own closure.
+        // Additional asynchronous operation, e.g., fetching the user's posts  
+        const posts = await fetchJson(`${endpoint}/posts`);  
+
+        return { user, posts }; // Successful result  
+    } catch (err) {  
+        // Log the original error and wrap it in a more descriptive one  
+        console.error('Failed to load user data:', err);  
+        throw new Error(`loadUserData failed for ID ${userId}: ${err.message}`);  
+    }  
+}  
+
+// Example usage  
+loadUserData(42)  
+    .then(data => console.log('User data:', data))  
+    .catch(err => console.error('Error:', err.message));
 */
 
 /* AI
-Topic: Chain‑of‑Thought Prompting for Complex Reasoning  
+Topic: Few‑Shot Prompt Engineering for GPT‑style Language Models  
 
 Explanation:  
-Chain‑of‑Thought (CoT) prompting asks the model to generate intermediate reasoning steps before giving the final answer, which improves performance on multi‑step problems. By explicitly requesting a step‑by‑step breakdown, the model can keep track of calculations, logical deductions, or constraints that would otherwise be lost in a single‑shot answer. CoT works especially well for math, puzzles, and tasks that require planning or hierarchical thinking. The technique is simple to apply: prepend an instruction like “Let’s think step by step” to the user query or provide a few exemplars that demonstrate the desired reasoning pattern. When combined with temperature control, CoT can yield more reliable and interpretable outputs.
+1. Few‑shot prompting supplies a small number of example input‑output pairs inside the prompt, guiding the model to perform a new task without additional fine‑tuning.  
+2. The examples act as in‑context demonstrations, helping the model infer the desired format, style, and reasoning pattern.  
+3. Selecting diverse and representative examples improves generalization, while keeping the total token count within the model’s context window.  
+4. You can programmatically build prompts, insert user queries, and parse the model’s response for downstream use.  
+5. This technique is especially useful for tasks like classification, extraction, or transformation where labeled data are scarce.  
 
-Code example (Python, using the OpenAI API) with inline comments:  
+Code example (Python, using OpenAI’s chat completion API):
 
-import os  
-import openai  
+import os
+import json
+import openai
 
-# Load your OpenAI API key from an environment variable  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Load your API key from an environment variable or a config file
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def chain_of_thought(question: str) -> str:  
-    """Send a prompt that encourages step‑by‑step reasoning and return the model's reply."""  
-    # Build the prompt: a short instruction followed by the user question  
-    prompt = (  
-        "You are a helpful assistant that solves problems by thinking out loud.\n"  
-        "When answering, always show each reasoning step before giving the final answer.\n\n"  
-        f"Question: {question}\n"  
-        "Answer:"  
-    )  
+def build_few_shot_prompt(user_question):
+    """
+    Construct a prompt that includes two demonstration examples
+    and then appends the user's question.
+    """
+    # Example 1: converting a sentence to title case
+    example1 = (
+        "User: Convert the following sentence to title case:\n"
+        "\"the quick brown fox jumps over the lazy dog.\"\n"
+        "Assistant: The Quick Brown Fox Jumps Over The Lazy Dog."
+    )
+    # Example 2: extracting a date from a sentence
+    example2 = (
+        "User: Extract the date from this text:\n"
+        "\"Our meeting is scheduled for 12th March 2024 at 3 PM.\"\n"
+        "Assistant: 12 March 2024"
+    )
+    # Combine the examples with the new request
+    prompt = f"{example1}\n\n{example2}\n\nUser: {user_question}\nAssistant:"
+    return prompt
 
-    # Call the chat completion endpoint with a moderate temperature for creativity  
-    response = openai.ChatCompletion.create(  
-        model="gpt-4o-mini",  
-        messages=[{"role": "user", "content": prompt}],  
-        temperature=0.7,  
-        max_tokens=500,  
-        n=1,  
-        stop=None,  
-    )  
+def ask_gpt(user_question):
+    prompt = build_few_shot_prompt(user_question)
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",            # Choose a model that supports chat completions
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.0,                # Deterministic output for extraction tasks
+        max_tokens=200
+    )
+    # The assistant's reply is in the first choice's message content
+    answer = response.choices[0].message.content.strip()
+    return answer
 
-    # Extract and return the assistant's full reply (including the chain of thought)  
-    return response.choices[0].message.content.strip()  
-
-# Example usage  
-question = "A train travels 150 miles east, then 200 miles north. How far is it from the starting point?"  
-answer = chain_of_thought(question)  
-print(answer)  
-
-# Expected output (illustrative):  
-# Step 1: Compute the eastward displacement = 150 miles.  
-# Step 2: Compute the northward displacement = 200 miles.  
-# Step 3: Use the Pythagorean theorem: distance = sqrt(150^2 + 200^2) = sqrt(22500 + 40000) = sqrt(62500) = 250 miles.  
-# Final answer: The train is 250 miles from the starting point.
+# Example usage
+if __name__ == "__main__":
+    question = "Summarize the following paragraph in one sentence:\n\"Artificial intelligence has transformed many industries, enabling automation, predictive analytics, and new forms of human‑computer interaction.\"\n"
+    result = ask_gpt(question)
+    print("Model response:", result)
 */
 
