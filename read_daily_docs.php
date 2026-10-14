@@ -1,213 +1,194 @@
 <?php
-// 2026-10-13 08:05:44
+// 2026-10-14 06:29:49
 
 /* PHP
-Topic: PHP Generators
+Topic: PHP Anonymous Functions (Closures)
 
 Explanation:
-Generators allow you to create iterators without building an entire array in memory.  
-They use the yield keyword to return values one at a time, pausing execution between each call.  
-This makes them ideal for processing large data sets, streaming files, or handling infinite sequences.  
-A generator function returns an object that implements the Traversable interface, so it works with foreach.  
-Because the state is retained between yields, you can maintain local variables without extra overhead.
+Anonymous functions, also called closures, allow you to create functions without giving them a name and assign them to variables. They can capture variables from the surrounding scope, enabling powerful patterns like callbacks and functional pipelines. Closures are especially useful when you need a short piece of logic that will be passed to array functions such as array_map or usort. PHP supports the use keyword to explicitly import variables by value or by reference into the closure's scope. Because they are objects, you can store them, return them from other functions, or even bind them to different objects using the bindTo method.
 
 Code Example:
-function readLargeFile(string $filePath): Generator {
-    // Open the file for reading
-    $handle = fopen($filePath, 'r');
-    if ($handle === false) {
-        throw new RuntimeException("Unable to open file: $filePath");
-    }
+// Define an array of numbers
+$numbers = [1, 2, 3, 4, 5];
 
-    // Yield each line until end of file
-    while (!feof($handle)) {
-        $line = fgets($handle);
-        if ($line !== false) {
-            // Trim newline characters and yield the line
-            yield trim($line);
-        }
-    }
+// Create an anonymous function that multiplies each element by a factor
+$factor = 3;
+$multiply = function($value) use ($factor) {
+    // $factor is captured from the parent scope
+    return $value * $factor;
+};
 
-    // Close the file handle when done
-    fclose($handle);
-}
+// Apply the closure to each element using array_map
+$doubled = array_map($multiply, $numbers);
 
-// Usage: iterate over the generator without loading the whole file into memory
-foreach (readLargeFile('large-data.txt') as $row) {
-    // Process each row individually
-    echo $row . PHP_EOL;
-}
+// Output the result
+print_r($doubled); // Expected output: Array ( [0] => 3 [1] => 6 [2] => 9 [3] => 12 [4] => 15 )
 */
 
 /* Laravel
-Topic: Laravel Queues with Redis
+Topic: Eloquent Mutators & Accessors  
 
 Explanation:  
-Laravel queues allow time‑consuming tasks to be processed in the background, keeping web requests fast.  
-Redis is a fast, in‑memory data store that Laravel can use as a queue driver for high‑throughput jobs.  
-A job class defines the work to be performed and is dispatched to the queue; workers then pull jobs from Redis and execute them.  
-Queue workers can be run as daemons, scaling horizontally across multiple servers.  
-Laravel provides helper commands to monitor, retry, and clear failed jobs, making queue management straightforward.
+- Mutators and accessors allow you to transform attribute values when they are set or retrieved on an Eloquent model.  
+- A mutator is defined by a set{Attribute}Attribute method and runs automatically when you assign a value to that attribute.  
+- An accessor is defined by a get{Attribute}Attribute method and runs automatically when you read the attribute’s value.  
+- They are useful for formatting data, encrypting fields, or converting data types without cluttering controllers.  
+- Mutators and accessors work with both standard attributes and JSON columns stored as arrays.  
 
-Code example with comments:
+Code example (User model with a password mutator and a formatted created_at accessor):
 
-// In config/queue.php set the default driver to redis
-'default' => env('QUEUE_CONNECTION', 'redis'),
+<?php  
+namespace App\Models;  
 
-// Define a job class
-php artisan make:job ProcessReport
+use Illuminate\Foundation\Auth\User as Authenticatable;  
+use Illuminate\Notifications\Notifiable;  
 
-// app/Jobs/ProcessReport.php
-<?php
-namespace App\Jobs;
+class User extends Authenticatable  
+{  
+    use Notifiable;  
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
+    // Define which attributes are mass assignable  
+    protected $fillable = ['name', 'email', 'password'];  
 
-class ProcessReport implements ShouldQueue
-{
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    // Mutator: automatically hash the password when it is set  
+    public function setPasswordAttribute($value)  
+    {  
+        // If the password is already hashed, leave it unchanged  
+        $this->attributes['password'] = \Hash::needsRehash($value) ? \Hash::make($value) : $value;  
+    }  
 
-    protected $reportId; // data needed for the job
+    // Accessor: format the created_at timestamp when accessed  
+    public function getCreatedAtAttribute($value)  
+    {  
+        // Return a human‑readable date string, e.g., “Mar 10, 2024 14:35”  
+        return \Carbon\Carbon::parse($value)->format('M d, Y H:i');  
+    }  
+}  
 
-    // Receive any parameters when the job is dispatched
-    public function __construct($reportId)
-    {
-        $this->reportId = $reportId;
-    }
+// Usage in a controller or tinker  
+$user = new \App\Models\User();  
+$user->name = 'Alice';  
+$user->email = 'alice@example.com';  
+$user->password = 'secret123';  // The mutator hashes this value automatically  
+$user->save();  
 
-    // The handle method contains the logic that runs in the background
-    public function handle()
-    {
-        // Example: generate a PDF report
-        $report = Report::find($this->reportId);
-        $pdf = PDF::loadView('reports.template', compact('report'));
-        $pdf->save(storage_path("app/reports/{$report->id}.pdf"));
-        // Optionally notify the user
-        Notification::send($report->user, new ReportReady($report));
-    }
-}
-?>
-
-// Dispatch the job from a controller or service
-use App\Jobs\ProcessReport;
-
-public function store(Request $request)
-{
-    $report = Report::create($request->all());
-    // Push the job onto the Redis queue; it will run asynchronously
-    ProcessReport::dispatch($report->id);
-    return response()->json(['message' => 'Report is being processed'], 202);
-}
-
-// Run a queue worker that listens to the redis queue
-php artisan queue:work redis --daemon
-
-// To monitor the queue, you can use Laravel Horizon (optional)
-// Install Horizon, then run: php artisan horizon
-// Horizon provides a beautiful dashboard for Redis queues.
+echo $user->created_at;  // The accessor outputs the formatted date string.  
 */
 
 /* MySQL
-Topic: MySQL Transaction Isolation Levels  
+Topic: Stored Procedures in MySQL
 
 Explanation:  
-MySQL supports several isolation levels that define how concurrent transactions interact with each other. The default level is REPEATABLE READ, which prevents non‑repeatable reads but can still allow phantom rows. READ COMMITTED ensures each SELECT sees only data committed before it starts, eliminating dirty reads. SERIALIZABLE provides the strictest isolation by forcing transactions to execute as if they were sequential, but it can cause significant locking and reduced concurrency. Choosing the appropriate level depends on the consistency requirements of your application and the performance trade‑offs you are willing to accept. You can set the isolation level for a session or for a single transaction using SET TRANSACTION or SET SESSION statements.
+Stored procedures are named sets of SQL statements that are stored on the server and can be invoked repeatedly. They allow you to encapsulate business logic, reduce client‑server round trips, and improve security by limiting direct table access. Parameters can be passed in, out, or both, enabling flexible input and output handling. Using stored procedures can also help with code reuse and simplify complex transaction management. They are compiled once and then executed many times, offering performance benefits over ad‑hoc queries.
 
-Code example with comments:  
+Code example with comments:
 
--- Set the isolation level for the current session to READ COMMITTED  
-SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED;  
+-- Switch to a custom delimiter so the procedure body can contain semicolons
+DELIMITER $$
 
--- Start a new transaction  
-START TRANSACTION;  
+-- Create a stored procedure that retrieves all orders for a given customer
+CREATE PROCEDURE GetCustomerOrders (IN cust_id INT)
+BEGIN
+    -- Select the order details for the supplied customer ID
+    SELECT order_id,
+           order_date,
+           total_amount
+    FROM orders
+    WHERE customer_id = cust_id;
+END$$
 
--- First operation: read a row (will see only committed data)  
-SELECT * FROM accounts WHERE account_id = 101;  -- comment: fetch current balance  
+-- Restore the default delimiter
+DELIMITER ;
 
--- Second operation: update the same row  
-UPDATE accounts SET balance = balance - 500 WHERE account_id = 101;  
-
--- Commit the transaction to make the changes permanent  
-COMMIT;  
-
--- Optionally, you can set the isolation level for a single transaction only  
-START TRANSACTION;  
-SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;  -- comment: enforce strict ordering  
-
--- Perform operations that require the highest isolation  
-INSERT INTO orders (order_id, account_id, amount) VALUES (2001, 101, 500);  
-
-COMMIT;  
+-- Call the procedure for a specific customer (e.g., customer with ID 42)
+CALL GetCustomerOrders(42);
 */
 
 /* JavaScript
-Topic: Closures in JavaScript  
+Topic: JavaScript Closures
 
-Explanation:  
-A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing.  
-Closures are created each time a function is defined, capturing the lexical environment at that point in time.  
-They enable data privacy, function factories, and the ability to maintain state across multiple invocations.  
-Understanding closures is essential for mastering asynchronous patterns, callbacks, and module design in JavaScript.  
+Explanation:
+A closure is a function that retains access to its lexical environment even after the outer function has finished executing.  
+It allows inner functions to read variables from the outer scope, preserving state across multiple calls.  
+Closures are created every time a function is defined, enabling data encapsulation and private variables.  
+They are heavily used in callbacks, event handlers, and module patterns.  
+Understanding closures helps avoid common pitfalls like unintended variable sharing in loops.
 
-Code example with comments:  
-function makeCounter() {                     // outer function creates a private variable  
-    let count = 0;                          // this variable is not directly accessible outside  
-    return function() {                    // inner function forms a closure over 'count'  
-        count++;                           // modifies the captured variable each call  
-        console.log('Current count:', count); // displays the current value  
-    };                                      // end of inner function  
-}                                            // end of outer function  
+Code Example (with comments):
+function makeCounter() {                 // outer function creates a private variable
+    let count = 0;                       // this variable is not directly accessible from outside
 
-const counter = makeCounter(); // invoke outer function, receive the inner function  
-counter(); // prints: Current count: 1  
-counter(); // prints: Current count: 2  
-counter(); // prints: Current count: 3   // the 'count' variable persists across calls because of the closure.
+    return function() {                  // inner function forms a closure over count
+        count++;                         // modifies the private variable
+        console.log('Current count:', count);
+    };
+}
+
+const counterA = makeCounter();          // each call creates a new independent closure
+const counterB = makeCounter();
+
+counterA(); // Current count: 1
+counterA(); // Current count: 2
+counterB(); // Current count: 1   (separate closure, its own count)
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
+Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
 
 Explanation:  
-Few‑shot prompting supplies a small number of example input‑output pairs inside the prompt, guiding the model to produce the desired format for new queries. This technique works well for tasks like classification, data extraction, or code generation without fine‑tuning. By carefully structuring the examples and using clear delimiters, the model can infer the pattern and apply it to subsequent inputs. The approach is lightweight, requires only the API call, and can be adapted on the fly for different domains. It is especially useful for programmers who need quick, custom behavior from a large language model.
+Few‑shot prompting supplies the model with a small number of example input‑output pairs before the actual user query, guiding it toward the desired behavior without fine‑tuning. By framing the prompt as a dialogue (system, user, assistant messages) you can control tone, format, and domain knowledge. This technique works well for tasks like data extraction, code generation, or style‑consistent writing. The examples act as in‑context “training”, allowing the model to infer the pattern you expect. Adjusting the number and clarity of examples lets you trade off between prompt length and output quality.
 
-Code example (Python, using openai library):
-import os
-import openai
+Code example (Python, using the official openai library):  
 
-# Load your OpenAI API key from an environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
+import os  
+import openai  
 
-# Define a few‑shot prompt for converting natural‑language tasks into Python code
-system_prompt = "You are a helpful assistant that translates plain English instructions into concise, executable Python code."
+# Set your API key – replace with a secure method in production  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Example pairs that illustrate the desired behavior
-examples = [
-    {"role": "user", "content": "Create a list of squares for numbers 1 through 5."},
-    {"role": "assistant", "content": "squares = [i**2 for i in range(1, 6)]"},
-    {"role": "user", "content": "Read a CSV file named 'data.csv' and print the first three rows."},
-    {"role": "assistant", "content": "import pandas as pd\ndf = pd.read_csv('data.csv')\nprint(df.head(3))"},
-]
+def extract_entities(text: str) -> str:  
+    # Define a few in‑context examples that show the desired JSON output format  
+    messages = [  
+        {  
+            "role": "system",  
+            "content": "You are an assistant that extracts named entities (people, locations, organizations) from a sentence and returns a JSON object with keys 'people', 'locations', 'organizations'."  
+        },  
+        {  
+            "role": "user",  
+            "content": "Barack Obama visited Berlin in 2016."  
+        },  
+        {  
+            "role": "assistant",  
+            "content": '{"people": ["Barack Obama"], "locations": ["Berlin"], "organizations": []}'  
+        },  
+        {  
+            "role": "user",  
+            "content": "Google opened a new office in Toronto."  
+        },  
+        {  
+            "role": "assistant",  
+            "content": '{"people": [], "locations": ["Toronto"], "organizations": ["Google"]}'  
+        },  
+        # The actual request follows the same pattern  
+        {  
+            "role": "user",  
+            "content": text  
+        }  
+    ]  
 
-# New request that we want the model to handle using the same pattern
-new_query = {"role": "user", "content": "Generate a dictionary that maps each letter in the word 'hello' to its frequency."}
+    # Call the chat completion endpoint  
+    response = openai.ChatCompletion.create(  
+        model="gpt-4o-mini",          # Use a suitable model for cost‑effective inference  
+        messages=messages,  
+        temperature=0.0,              # Deterministic output for structured data  
+        max_tokens=200               # Enough for the JSON result  
+    )  
 
-# Assemble the full message list: system prompt, examples, then the new query
-messages = [{"role": "system", "content": system_prompt}] + examples + [new_query]
+    # Extract the assistant's reply text  
+    return response.choices[0].message.content.strip()  
 
-# Call the Chat Completion endpoint
-response = openai.ChatCompletion.create(
-    model="gpt-4o-mini",      # or another available model
-    messages=messages,
-    temperature=0.0           # deterministic output for code generation
-)
-
-# Extract and display the generated code
-generated_code = response.choices[0].message.content
-print("Generated Python code:")
-print(generated_code)
+# Example usage  
+sample = "Elon Musk announced Tesla's new factory in Austin."  
+print(extract_entities(sample))   # Expected JSON with person, organization, location.  
 */
 
