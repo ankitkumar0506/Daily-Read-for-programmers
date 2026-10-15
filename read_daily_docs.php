@@ -1,194 +1,211 @@
 <?php
-// 2026-10-14 06:29:49
+// 2026-10-15 06:11:34
 
 /* PHP
-Topic: PHP Anonymous Functions (Closures)
+Topic: Prepared Statements with PDO
 
-Explanation:
-Anonymous functions, also called closures, allow you to create functions without giving them a name and assign them to variables. They can capture variables from the surrounding scope, enabling powerful patterns like callbacks and functional pipelines. Closures are especially useful when you need a short piece of logic that will be passed to array functions such as array_map or usort. PHP supports the use keyword to explicitly import variables by value or by reference into the closure's scope. Because they are objects, you can store them, return them from other functions, or even bind them to different objects using the bindTo method.
+Explanation:  
+Prepared statements separate SQL logic from data, preventing SQL injection attacks by treating input as parameters rather than part of the query string. PDO (PHP Data Objects) provides a uniform interface for many database engines, allowing you to prepare a statement once and execute it multiple times with different values. When a statement is prepared, the database parses, compiles, and optimizes it, which can improve performance for repetitive queries. Binding values can be done by position or by named placeholders, giving you flexibility in how you structure your code. Errors during preparation or execution can be caught as exceptions, making debugging clearer and more reliable.
 
 Code Example:
-// Define an array of numbers
-$numbers = [1, 2, 3, 4, 5];
+<?php
+// Enable exceptions for PDO errors
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$options = [
+    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+];
+try {
+    $pdo = new PDO($dsn, 'username', 'password', $options);
+} catch (PDOException $e) {
+    die('Connection failed: ' . $e->getMessage());
+}
 
-// Create an anonymous function that multiplies each element by a factor
-$factor = 3;
-$multiply = function($value) use ($factor) {
-    // $factor is captured from the parent scope
-    return $value * $factor;
-};
+// Prepare an INSERT statement with named placeholders
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
+$stmt = $pdo->prepare($sql);
 
-// Apply the closure to each element using array_map
-$doubled = array_map($multiply, $numbers);
+// Bind values to the placeholders and execute
+$username = 'jane_doe';
+$email    = 'jane@example.com';
+$stmt->bindParam(':username', $username, PDO::PARAM_STR);
+$stmt->bindParam(':email', $email, PDO::PARAM_STR);
 
-// Output the result
-print_r($doubled); // Expected output: Array ( [0] => 3 [1] => 6 [2] => 9 [3] => 12 [4] => 15 )
+try {
+    $stmt->execute(); // The query runs with the bound parameters
+    echo 'User added with ID: ' . $pdo->lastInsertId();
+} catch (PDOException $e) {
+    echo 'Insert failed: ' . $e->getMessage();
+}
+?>
 */
 
 /* Laravel
-Topic: Eloquent Mutators & Accessors  
+Topic: Implicit Route Model Binding in Laravel
 
-Explanation:  
-- Mutators and accessors allow you to transform attribute values when they are set or retrieved on an Eloquent model.  
-- A mutator is defined by a set{Attribute}Attribute method and runs automatically when you assign a value to that attribute.  
-- An accessor is defined by a get{Attribute}Attribute method and runs automatically when you read the attribute’s value.  
-- They are useful for formatting data, encrypting fields, or converting data types without cluttering controllers.  
-- Mutators and accessors work with both standard attributes and JSON columns stored as arrays.  
+Explanation:
+Laravel’s implicit route model binding automatically resolves Eloquent models based on the route segment name. When a route parameter’s name matches a model’s primary key, Laravel injects the corresponding model instance into the controller method. This removes the need for manual queries and 404 handling, as Laravel will return a 404 response if the record is not found. It works for any Eloquent model that uses the default primary key column (id) or a custom key if the model defines getRouteKeyName(). Implicit binding also respects soft‑deletes, returning a 404 for soft‑deleted records unless the query is customized.
 
-Code example (User model with a password mutator and a formatted created_at accessor):
+Code Example:
+// routes/web.php
+Route::get('posts/{post}', [PostController::class, 'show']);
 
-<?php  
-namespace App\Models;  
+// app/Models/Post.php
+namespace App\Models;
 
-use Illuminate\Foundation\Auth\User as Authenticatable;  
-use Illuminate\Notifications\Notifiable;  
+use Illuminate\Database\Eloquent\Model;
 
-class User extends Authenticatable  
-{  
-    use Notifiable;  
+class Post extends Model
+{
+    // If you want to bind by a column other than 'id', uncomment the method below
+    // public function getRouteKeyName()
+    // {
+    //     return 'slug';
+    // }
+}
 
-    // Define which attributes are mass assignable  
-    protected $fillable = ['name', 'email', 'password'];  
+// app/Http/Controllers/PostController.php
+namespace App\Http\Controllers;
 
-    // Mutator: automatically hash the password when it is set  
-    public function setPasswordAttribute($value)  
-    {  
-        // If the password is already hashed, leave it unchanged  
-        $this->attributes['password'] = \Hash::needsRehash($value) ? \Hash::make($value) : $value;  
-    }  
+use App\Models\Post;
+use Illuminate\Http\Request;
 
-    // Accessor: format the created_at timestamp when accessed  
-    public function getCreatedAtAttribute($value)  
-    {  
-        // Return a human‑readable date string, e.g., “Mar 10, 2024 14:35”  
-        return \Carbon\Carbon::parse($value)->format('M d, Y H:i');  
-    }  
-}  
+class PostController extends Controller
+{
+    // Laravel automatically injects the Post model instance that matches the {post} parameter
+    public function show(Post $post)
+    {
+        // At this point $post is a fully loaded Eloquent model
+        return view('posts.show', ['post' => $post]);
+    }
+}
 
-// Usage in a controller or tinker  
-$user = new \App\Models\User();  
-$user->name = 'Alice';  
-$user->email = 'alice@example.com';  
-$user->password = 'secret123';  // The mutator hashes this value automatically  
-$user->save();  
-
-echo $user->created_at;  // The accessor outputs the formatted date string.  
+// If you try to access a non‑existent post, Laravel will automatically return a 404 response.
 */
 
 /* MySQL
-Topic: Stored Procedures in MySQL
+Topic: MySQL Stored Procedures with IN, OUT, and INOUT Parameters  
 
 Explanation:  
-Stored procedures are named sets of SQL statements that are stored on the server and can be invoked repeatedly. They allow you to encapsulate business logic, reduce client‑server round trips, and improve security by limiting direct table access. Parameters can be passed in, out, or both, enabling flexible input and output handling. Using stored procedures can also help with code reuse and simplify complex transaction management. They are compiled once and then executed many times, offering performance benefits over ad‑hoc queries.
+Stored procedures are precompiled SQL blocks that can encapsulate complex logic, reduce client‑server traffic, and improve security by limiting direct table access. They accept parameters that can be input‑only (IN), output‑only (OUT), or both (INOUT), allowing data to be passed in and results to be returned without using result sets. Parameters must be declared with their data types and can be referenced inside the body like regular variables. The CALL statement invokes the procedure, providing arguments for each defined parameter. Using stored procedures also enables reuse of business rules across multiple applications and simplifies maintenance.  
 
-Code example with comments:
+Code Example:  
+CREATE PROCEDURE GetEmployeeStats (  
+    IN p_department_id INT,          -- input: department to analyze  
+    OUT p_employee_count INT,       -- output: number of employees in the department  
+    INOUT p_total_salary DECIMAL(10,2) )   -- both: initial value is 0, will hold sum of salaries  
+BEGIN  
+    SELECT COUNT(*) INTO p_employee_count  
+    FROM employees  
+    WHERE department_id = p_department_id;  
 
--- Switch to a custom delimiter so the procedure body can contain semicolons
-DELIMITER $$
+    SELECT SUM(salary) INTO p_total_salary  
+    FROM employees  
+    WHERE department_id = p_department_id;  
 
--- Create a stored procedure that retrieves all orders for a given customer
-CREATE PROCEDURE GetCustomerOrders (IN cust_id INT)
-BEGIN
-    -- Select the order details for the supplied customer ID
-    SELECT order_id,
-           order_date,
-           total_amount
-    FROM orders
-    WHERE customer_id = cust_id;
-END$$
+    -- If the department has no employees, ensure the output is zero instead of NULL  
+    IF p_employee_count = 0 THEN  
+        SET p_total_salary = 0;  
+    END IF;  
+END;  
 
--- Restore the default delimiter
-DELIMITER ;
-
--- Call the procedure for a specific customer (e.g., customer with ID 42)
-CALL GetCustomerOrders(42);
+-- Example of calling the procedure and retrieving the results  
+SET @dept_id = 5;  
+SET @emp_cnt = 0;  
+SET @salary_sum = 0;  
+CALL GetEmployeeStats(@dept_id, @emp_cnt, @salary_sum);  
+SELECT @emp_cnt AS employee_count, @salary_sum AS total_salary;
 */
 
 /* JavaScript
-Topic: JavaScript Closures
+Topic name: Closures in JavaScript
 
 Explanation:
-A closure is a function that retains access to its lexical environment even after the outer function has finished executing.  
-It allows inner functions to read variables from the outer scope, preserving state across multiple calls.  
-Closures are created every time a function is defined, enabling data encapsulation and private variables.  
-They are heavily used in callbacks, event handlers, and module patterns.  
-Understanding closures helps avoid common pitfalls like unintended variable sharing in loops.
+A closure is created when an inner function retains access to the variables of its outer (enclosing) function even after that outer function has finished executing. This happens because functions in JavaScript form a lexical environment that captures the scope chain at the time they are defined. Closures enable powerful patterns such as data privacy, function factories, and partial application. They are essential for managing state in asynchronous code, event handlers, and module patterns. Understanding closures helps avoid common pitfalls like unintentionally sharing mutable data across multiple invocations.
 
-Code Example (with comments):
-function makeCounter() {                 // outer function creates a private variable
-    let count = 0;                       // this variable is not directly accessible from outside
+Code example:
+function makeCounter(initialValue) {
+    // The variable count is private to the outer function
+    let count = initialValue;
 
-    return function() {                  // inner function forms a closure over count
-        count++;                         // modifies the private variable
-        console.log('Current count:', count);
+    // The returned inner function forms a closure over count
+    return function increment(step) {
+        // step defaults to 1 if not provided
+        step = step || 1;
+        count += step;
+        return count;
     };
 }
 
-const counterA = makeCounter();          // each call creates a new independent closure
-const counterB = makeCounter();
+// Create two independent counters
+const counterA = makeCounter(0);
+const counterB = makeCounter(10);
 
-counterA(); // Current count: 1
-counterA(); // Current count: 2
-counterB(); // Current count: 1   (separate closure, its own count)
+// Use the counters
+console.log(counterA()); // 1
+console.log(counterA(2)); // 3
+console.log(counterB()); // 11
+console.log(counterB(5)); // 16
+
+// The internal variable 'count' cannot be accessed directly
+// console.log(counterA.count); // undefined (demonstrates encapsulation)
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
+Topic: Using OpenAI Function Calling to Extract Structured Data from Chat Responses  
 
 Explanation:  
-Few‑shot prompting supplies the model with a small number of example input‑output pairs before the actual user query, guiding it toward the desired behavior without fine‑tuning. By framing the prompt as a dialogue (system, user, assistant messages) you can control tone, format, and domain knowledge. This technique works well for tasks like data extraction, code generation, or style‑consistent writing. The examples act as in‑context “training”, allowing the model to infer the pattern you expect. Adjusting the number and clarity of examples lets you trade off between prompt length and output quality.
+OpenAI’s chat completion API can return JSON‑structured data by defining “functions” that describe the desired output schema. The model decides when to invoke a function based on the user prompt, producing reliable, machine‑readable results without post‑processing text. This approach reduces parsing errors and simplifies integration with downstream systems. It works with any GPT‑4‑turbo or newer model that supports function calling. Ideal for tasks like extracting dates, amounts, or entities from free‑form user input.  
 
-Code example (Python, using the official openai library):  
+Code example (Python, using the openai library):  
 
 import os  
 import openai  
 
-# Set your API key – replace with a secure method in production  
+# Set your API key – ensure it is kept secret in environment variables  
 openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-def extract_entities(text: str) -> str:  
-    # Define a few in‑context examples that show the desired JSON output format  
-    messages = [  
-        {  
-            "role": "system",  
-            "content": "You are an assistant that extracts named entities (people, locations, organizations) from a sentence and returns a JSON object with keys 'people', 'locations', 'organizations'."  
-        },  
-        {  
-            "role": "user",  
-            "content": "Barack Obama visited Berlin in 2016."  
-        },  
-        {  
-            "role": "assistant",  
-            "content": '{"people": ["Barack Obama"], "locations": ["Berlin"], "organizations": []}'  
-        },  
-        {  
-            "role": "user",  
-            "content": "Google opened a new office in Toronto."  
-        },  
-        {  
-            "role": "assistant",  
-            "content": '{"people": [], "locations": ["Toronto"], "organizations": ["Google"]}'  
-        },  
-        # The actual request follows the same pattern  
-        {  
-            "role": "user",  
-            "content": text  
+# Define the function schema that the model may call  
+functions = [  
+    {  
+        "name": "extract_invoice_details",  
+        "description": "Extract key fields from an invoice description",  
+        "parameters": {  
+            "type": "object",  
+            "properties": {  
+                "invoice_number": {"type": "string", "description": "The invoice identifier"},  
+                "date": {"type": "string", "format": "date", "description": "Invoice date"},  
+                "total_amount": {"type": "number", "description": "Total amount due in USD"}  
+            },  
+            "required": ["invoice_number", "date", "total_amount"]  
         }  
-    ]  
+    }  
+]  
 
-    # Call the chat completion endpoint  
-    response = openai.ChatCompletion.create(  
-        model="gpt-4o-mini",          # Use a suitable model for cost‑effective inference  
-        messages=messages,  
-        temperature=0.0,              # Deterministic output for structured data  
-        max_tokens=200               # Enough for the JSON result  
-    )  
+# User prompt containing unstructured invoice text  
+user_message = {  
+    "role": "user",  
+    "content": "Please process this: Invoice #INV-2023-045 was issued on 2023‑09‑12 for a total of $2,349.75."  
+}  
 
-    # Extract the assistant's reply text  
-    return response.choices[0].message.content.strip()  
+# Call the chat completion endpoint with function support  
+response = openai.ChatCompletion.create(  
+    model="gpt-4-1106-preview",  # model that supports function calling  
+    messages=[user_message],  
+    functions=functions,  
+    function_call="auto"  # let the model decide when to call the function  
+)  
 
-# Example usage  
-sample = "Elon Musk announced Tesla's new factory in Austin."  
-print(extract_entities(sample))   # Expected JSON with person, organization, location.  
+# The model may return a function call object in the 'choices' field  
+choice = response["choices"][0]  
+
+if "function_call" in choice["message"]:  
+    # Parse the arguments returned by the model (JSON string)  
+    import json  
+    args = json.loads(choice["message"]["function_call"]["arguments"])  
+    print("Extracted invoice details:", args)  
+else:  
+    # Fallback if the model chose not to call the function  
+    print("Model response:", choice["message"]["content"])  
 */
 
