@@ -1,254 +1,289 @@
 <?php
-// 2026-10-19 06:31:55
+// 2026-10-21 06:20:36
 
 /* PHP
-Topic: Anonymous Functions and Closures in PHP
+Topic: Prepared Statements with PDO  
 
-Explanation:
-Anonymous functions, also called closures, allow you to create functions without a name and assign them to variables.  
-They can capture variables from the surrounding scope, making them useful for callbacks and functional programming patterns.  
-In PHP, the use keyword is required to import external variables into the closure’s scope.  
-Closures can be passed around, stored in arrays, or returned from other functions.  
-They enable more concise and flexible code, especially when working with array functions like array_map or usort.
+Explanation:  
+Prepared statements allow you to execute the same SQL query multiple times with different parameters while keeping the query structure separate from the data. This improves performance because the database can cache the execution plan for the query. More importantly, it protects against SQL injection by ensuring that user‑supplied values are bound safely. PDO (PHP Data Objects) provides a consistent API for prepared statements across many database systems. Using PDO you can prepare a statement, bind values, and execute it in a clear, object‑oriented way.  
 
-Code example:
-<?php
-// Define an array of numbers
-$numbers = [1, 2, 3, 4, 5];
+Code example:  
+<?php  
+// Create a new PDO connection (adjust DSN, username, and password as needed)  
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';  
+$username = 'dbuser';  
+$password = 'dbpass';  
 
-// Create an anonymous function that multiplies each element by a factor
-$factor = 3;
-$multiply = function ($value) use ($factor) {
-    // $factor is captured from the parent scope via the use clause
-    return $value * $factor;
-};
+try {  
+    $pdo = new PDO($dsn, $username, $password, [  
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors  
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC // Fetch results as associative arrays  
+    ]);  
+} catch (PDOException $e) {  
+    die('Connection failed: ' . $e->getMessage());  
+}  
 
-// Apply the closure to each element using array_map
-$doubled = array_map($multiply, $numbers);
+// Prepare an INSERT statement with placeholders  
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';  
+$stmt = $pdo->prepare($sql);  
 
-// Output the resulting array
-print_r($doubled); // Expected: Array ( [0] => 3 [1] => 6 [2] => 9 [3] => 12 [4] => 15 )
+// Sample data that might come from a form or API  
+$userData = [  
+    'username' => 'jane_doe',  
+    'email'    => 'jane@example.com'  
+];  
+
+// Bind parameters and execute the statement  
+$stmt->execute([  
+    ':username' => $userData['username'], // Bind the username value  
+    ':email'    => $userData['email']     // Bind the email value  
+]);  
+
+// Check how many rows were inserted  
+echo $stmt->rowCount() . ' row(s) inserted.';  
+
+// Retrieve the ID of the newly inserted record  
+$newId = $pdo->lastInsertId();  
+echo 'New user ID: ' . $newId;  
 ?>
 */
 
 /* Laravel
-Topic: Form Request Validation in Laravel
+Topic: Laravel Form Request Validation  
 
 Explanation:  
-Form Request Validation allows you to encapsulate validation logic in a dedicated class, keeping controllers clean and reusable.  
-You generate a request class with artisan, define authorization rules, and specify validation rules in the rules() method.  
-When the request class is type‑hinted in a controller method, Laravel automatically validates the incoming data before the method runs.  
-If validation fails, Laravel redirects back with error messages; on success, you receive a validated data array.  
-This approach promotes single responsibility, testability, and centralized error handling for form inputs.
+Form Request classes encapsulate validation logic, keeping controllers clean and focused on handling requests. They are generated with artisan and extend the base FormRequest class, providing authorize() and rules() methods. authorize() determines if the user is permitted to make the request, while rules() returns an array of validation rules applied to the incoming data. You can also define custom error messages and attribute names by overriding messages() and attributes() methods. In a controller, type‑hinting the Form Request automatically triggers validation before the controller action runs.
 
-Code example (app/Http/Requests/StorePostRequest.php):
+Code example with comments:  
 
-<?php
-namespace App\Http\Requests;
+// app/Http/Requests/StorePostRequest.php  
+<?php  
 
-use Illuminate\Foundation\Http\FormRequest;
+namespace App\Http\Requests;  
 
-class StorePostRequest extends FormRequest
-{
-    // Determines if the user is authorized to make this request
-    public function authorize()
-    {
-        // Return true to allow all users, or implement custom logic
-        return true;
-    }
+use Illuminate\Foundation\Http\FormRequest;  
 
-    // Validation rules applied to the incoming request data
-    public function rules()
-    {
-        return [
-            'title'   => 'required|string|max:255',
-            'body'    => 'required|string',
-            'tags'    => 'array',
-            'tags.*'  => 'integer|exists:tags,id',
-        ];
-    }
+class StorePostRequest extends FormRequest  
+{  
+    // Determine if the user is authorized to make this request  
+    public function authorize()  
+    {  
+        // For example, only allow logged‑in users  
+        return auth()->check();  
+    }  
 
-    // Custom messages (optional)
-    public function messages()
-    {
-        return [
-            'title.required' => 'A title is required for the post.',
-            'body.required'  => 'Please provide the content of the post.',
-        ];
-    }
-}
+    // Validation rules that apply to the request data  
+    public function rules()  
+    {  
+        return [  
+            'title'   => 'required|string|max:255',   // Title is required, must be a string, max 255 chars  
+            'body'    => 'required|string',           // Body must be present and be a string  
+            'tags'    => 'array',                     // Tags should be an array if present  
+            'tags.*'  => 'integer|exists:tags,id',    // Each tag ID must exist in the tags table  
+        ];  
+    }  
 
-Controller usage (app/Http/Controllers/PostController.php):
+    // Optional: custom messages for validation failures  
+    public function messages()  
+    {  
+        return [  
+            'title.required' => 'Please provide a title for your post.',  
+            'body.required'  => 'The post content cannot be empty.',  
+        ];  
+    }  
 
-<?php
-namespace App\Http\Controllers;
+    // Optional: custom attribute names for error messages  
+    public function attributes()  
+    {  
+        return [  
+            'title' => 'post title',  
+            'body'  => 'post body',  
+        ];  
+    }  
+}  
 
-use App\Http\Requests\StorePostRequest;
-use App\Models\Post;
+// app/Http/Controllers/PostController.php  
+<?php  
 
-class PostController extends Controller
-{
-    // Store a new blog post
-    public function store(StorePostRequest $request)
-    {
-        // At this point the request data is already validated
-        $validated = $request->validated();
+namespace App\Http\Controllers;  
 
-        // Create the post using the validated data
-        $post = Post::create([
-            'title' => $validated['title'],
-            'body'  => $validated['body'],
-        ]);
+use App\Http\Requests\StorePostRequest;  
+use App\Models\Post;  
 
-        // Attach tags if any were provided
-        if (!empty($validated['tags'])) {
-            $post->tags()->attach($validated['tags']);
-        }
+class PostController extends Controller  
+{  
+    // Store a new blog post using the validated request data  
+    public function store(StorePostRequest $request)  
+    {  
+        // The request is already validated at this point  
+        $post = Post::create([  
+            'title' => $request->input('title'),  
+            'body'  => $request->input('body'),  
+            'user_id' => auth()->id(),  
+        ]);  
 
-        // Return a response or redirect
-        return redirect()->route('posts.show', $post);
-    }
-}
+        // Attach tags if they were provided  
+        if ($request->filled('tags')) {  
+            $post->tags()->attach($request->input('tags'));  
+        }  
+
+        return redirect()->route('posts.show', $post)->with('status', 'Post created successfully!');  
+    }  
+}  
 */
 
 /* MySQL
-MySQL Topic: Common Table Expressions (CTEs) and Recursive Queries  
+Topic: MySQL Stored Procedures
 
-Explanation:  
-- A CTE is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-- It is defined using the WITH clause and improves readability by allowing you to break complex queries into logical building blocks.  
-- MySQL supports both non‑recursive (single‑query) and recursive CTEs, the latter enabling hierarchical data traversal such as organization charts or tree structures.  
-- Recursive CTEs consist of an anchor member (the base case) and a recursive member that references the CTE itself, combined with UNION [ALL] to iterate until a termination condition is met.  
-- Use of CTEs can also help with query optimization, as the optimizer may materialize the CTE once and reuse it, reducing repeated calculations.  
+Explanation:
+A stored procedure is a named set of SQL statements that are stored on the server and can be invoked repeatedly.  
+It allows you to encapsulate complex logic, including control‑flow statements, loops, and conditional branching.  
+Parameters can be defined as IN, OUT, or INOUT to pass values into the procedure and retrieve results.  
+Stored procedures improve performance by reducing network round‑trips, as the logic runs entirely on the database server.  
+They also promote code reuse and make it easier to enforce business rules centrally.
 
-Code Example (recursive CTE to list an employee hierarchy):
+Code example (with comments):
 
--- Sample table definition
-CREATE TABLE employees (
-    emp_id INT PRIMARY KEY,
-    emp_name VARCHAR(50),
-    manager_id INT NULL,            -- references emp_id of the manager
-    FOREIGN KEY (manager_id) REFERENCES employees(emp_id)
-);
+CREATE PROCEDURE GetTopCustomers(IN p_limit INT, OUT p_total INT)
+BEGIN
+    -- Declare a variable to hold the sum of total purchases
+    DECLARE v_sum INT DEFAULT 0;
 
--- Insert sample data
-INSERT INTO employees (emp_id, emp_name, manager_id) VALUES
-(1, 'Alice', NULL),      -- top‑level manager
-(2, 'Bob', 1),
-(3, 'Carol', 1),
-(4, 'David', 2),
-(5, 'Eve', 2),
-(6, 'Frank', 3);
+    -- Create a temporary table to hold the top customers by total amount spent
+    CREATE TEMPORARY TABLE tmp_top (
+        customer_id INT,
+        total_spent DECIMAL(10,2)
+    );
 
--- Recursive CTE to retrieve the full reporting chain for a given employee (e.g., employee 4)
-WITH RECURSIVE reporting_chain AS (
-    -- Anchor member: start with the target employee
-    SELECT
-        emp_id,
-        emp_name,
-        manager_id,
-        0 AS level                     -- level 0 = the employee themselves
-    FROM employees
-    WHERE emp_id = 4
+    -- Insert the top customers into the temporary table
+    INSERT INTO tmp_top (customer_id, total_spent)
+    SELECT customer_id, SUM(amount) AS total_spent
+    FROM orders
+    GROUP BY customer_id
+    ORDER BY total_spent DESC
+    LIMIT p_limit;
 
-    UNION ALL
+    -- Calculate the overall total of the selected customers
+    SELECT SUM(total_spent) INTO v_sum FROM tmp_top;
 
-    -- Recursive member: join the CTE to its manager
-    SELECT
-        e.emp_id,
-        e.emp_name,
-        e.manager_id,
-        rc.level + 1 AS level
-    FROM employees e
-    INNER JOIN reporting_chain rc ON e.emp_id = rc.manager_id
-)
-SELECT
-    emp_id,
-    emp_name,
-    manager_id,
-    level
-FROM reporting_chain
-ORDER BY level DESC;   -- highest level = top manager
+    -- Return the total via the OUT parameter
+    SET p_total = v_sum;
 
--- Result:
--- emp_id | emp_name | manager_id | level
--- --------------------------------------
--- 1      | Alice    | NULL       | 2
--- 2      | Bob      | 1          | 1
--- 4      | David    | 2          | 0
+    -- Return the result set of top customers to the caller
+    SELECT * FROM tmp_top;
 
--- The query walks up the hierarchy from David (emp_id 4) to his manager Bob, then to top‑level manager Alice.  
+    -- Clean up the temporary table
+    DROP TEMPORARY TABLE tmp_top;
+END;
 */
 
 /* JavaScript
-Topic: Closures in JavaScript  
+Topic: Asynchronous Functions with async/await
 
 Explanation:  
-A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing.  
-Closures allow private data encapsulation, enabling you to hide implementation details from the outside world.  
-They are created every time a function is defined, capturing the current lexical environment.  
-Common uses include function factories, module patterns, and maintaining state between calls without polluting the global scope.  
-Understanding closures is essential for effective asynchronous programming and managing callbacks.
+Async/await is syntax sugar built on top of JavaScript Promises, allowing asynchronous code to be written in a synchronous style. By declaring a function with the async keyword, it automatically returns a Promise and enables the use of await inside it. The await operator pauses the function execution until the awaited Promise resolves or rejects, simplifying error handling with try/catch. This approach makes complex asynchronous flows, such as sequential API calls, easier to read and maintain. It is especially useful in modern web development where network requests and I/O operations are frequent.
 
-Code example with comments:  
-function makeCounter(initialValue) {  
-    let count = initialValue;                // private variable, not accessible from outside  
+Code Example (with comments):
 
-    return function() {                     // the inner function forms a closure over 'count'  
-        count += 1;                          // it can read and modify 'count' each call  
-        return count;                        // return the updated count  
-    };                                       // the returned function retains reference to 'count'  
+// Simulate an asynchronous operation that resolves after a delay
+function fetchData(id) {
+    return new Promise((resolve, reject) => {
+        setTimeout(() => {
+            // Resolve with a mock result object
+            resolve({ id: id, value: "Data for " + id });
+        }, 1000);
+    });
+}
 
-}                                          // end of makeCounter  
+// Async function that retrieves two pieces of data sequentially
+async function loadCombinedData() {
+    try {
+        // Await the first fetch; execution pauses here until the Promise resolves
+        const first = await fetchData(1);
+        console.log("First result:", first);
 
-const counter = makeCounter(10);            // create a new counter starting at 10  
+        // Await the second fetch; runs after the first completes
+        const second = await fetchData(2);
+        console.log("Second result:", second);
 
-console.log(counter()); // 11                // first call increments to 11  
-console.log(counter()); // 12                // second call increments to 12  
-console.log(counter()); // 13                // third call increments to 13  
+        // Combine and return the results
+        return { first, second };
+    } catch (error) {
+        // Handle any errors that occurred during the async calls
+        console.error("Error loading data:", error);
+        throw error; // Re‑throw if further handling is needed
+    }
+}
 
-// Even though makeCounter has finished execution, the inner function still accesses 'count' via the closure.
+// Call the async function and handle its returned Promise
+loadCombinedData()
+    .then(combined => console.log("Combined data:", combined))
+    .catch(err => console.error("Failed to load combined data:", err));
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
+Topic: Prompt Engineering for Structured JSON Output with LLMs  
 
 Explanation:  
-Few‑shot prompting supplies the model with a small number of example inputs and desired outputs directly in the prompt, teaching it the pattern to follow. This technique works well for tasks like text classification, data extraction, or style transfer without fine‑tuning. By structuring examples as a conversation (system, user, assistant messages), you can guide the model’s behavior while keeping token usage low. The approach is flexible: you can swap examples, adjust temperature, or add delimiters to improve consistency. It is especially useful for programmers who need quick, adaptable AI helpers in scripts or notebooks.  
+Prompt engineering is the practice of crafting input text to guide large language models (LLMs) toward desired behavior. By explicitly specifying the output format, role, and examples, you can coax the model to return well‑structured data such as JSON, which is easy to parse programmatically. Including a brief system instruction, a clear user request, and a few-shot example reduces ambiguity and improves consistency across calls. This technique is especially useful when integrating LLMs into pipelines that require downstream processing, validation, or storage. Properly designed prompts also help mitigate hallucinations by constraining the model’s creative freedom to the required schema.  
 
-Code example (Python, using the openai package):  
+Code example (Python, using OpenAI’s ChatCompletion API):  
 
 import os  
-import openai  
+import json  
+from openai import OpenAI  
 
-# Set your API key – you can also configure it via the OPENAI_API_KEY environment variable  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Initialize client – assumes OPENAI_API_KEY is set in environment  
+client = OpenAI()  
 
-def classify_sentiment(text: str) -> str:  
-    # Define a few‑shot prompt with two labeled examples and a new query  
-    messages = [  
-        {"role": "system", "content": "You are a helpful assistant that classifies sentiment as Positive, Negative, or Neutral."},  
-        {"role": "user", "content": "I love the new features in the app! 😊"},  
-        {"role": "assistant", "content": "Positive"},  
-        {"role": "user", "content": "The update crashed my phone, very frustrating."},  
-        {"role": "assistant", "content": "Negative"},  
-        {"role": "user", "content": text}  # The text we want classified  
-    ]  
-
-    response = openai.ChatCompletion.create(  
-        model="gpt-4o-mini",        # Choose a lightweight model for cost‑effectiveness  
-        messages=messages,  
-        temperature=0.0,            # Deterministic output for classification tasks  
-        max_tokens=10               # We only need a short label back  
+# Define a system message that sets the role and output expectations  
+system_msg = {  
+    "role": "system",  
+    "content": (  
+        "You are a helpful assistant that extracts key information from a user’s description and returns it as a JSON object. "  
+        "The JSON must contain the fields: title (string), keywords (list of strings), and summary (string). "  
+        "Do not include any additional text or explanations."  
     )  
+}  
 
-    # Extract the assistant’s reply and strip whitespace  
-    sentiment = response.choices[0].message.content.strip()  
-    return sentiment  
+# Provide a few‑shot example to illustrate the required format  
+example_user = {  
+    "role": "user",  
+    "content": "Describe a recent project where you built a recommendation system for e‑commerce."  
+}  
 
-# Example usage  
-if __name__ == "__main__":  
-    test_text = "The tutorial was okay, nothing spectacular."  
-    print(f"Sentiment: {classify_sentiment(test_text)}")  
+example_assistant = {  
+    "role": "assistant",  
+    "content": (  
+        '{\n'  
+        '  "title": "E‑commerce Recommendation System",\n'  
+        '  "keywords": ["collaborative filtering", "product ranking", "Python", "Spark"],\n'  
+        '  "summary": "Developed a real‑time recommendation engine using collaborative filtering, improving click‑through rate by 12%."\n'  
+        '}'\n" )  
+}  
+
+# Actual user query  
+user_query = {  
+    "role": "user",  
+    "content": "Explain a tool you created to automate data cleaning for CSV files, highlighting its main features."  
+}  
+
+# Send the messages to the model  
+response = client.chat.completions.create(  
+    model="gpt-4o-mini",  
+    messages=[system_msg, example_user, example_assistant, user_query],  
+    temperature=0.0,   # deterministic output  
+)  
+
+# The model’s raw reply (should be a JSON string)  
+raw_output = response.choices[0].message.content.strip()  
+
+# Parse the JSON safely  
+try:  
+    result = json.loads(raw_output)  
+    print("Parsed JSON:", result)  
+except json.JSONDecodeError as e:  
+    print("Failed to parse JSON:", e)  
+    print("Raw model output:", raw_output)  
 */
 
