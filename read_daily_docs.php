@@ -1,289 +1,267 @@
 <?php
-// 2026-10-21 06:20:36
+// 2026-10-22 06:25:04
 
 /* PHP
-Topic: Prepared Statements with PDO  
+Topic: Using PDO (PHP Data Objects) with Prepared Statements for Secure Database Access  
 
 Explanation:  
-Prepared statements allow you to execute the same SQL query multiple times with different parameters while keeping the query structure separate from the data. This improves performance because the database can cache the execution plan for the query. More importantly, it protects against SQL injection by ensuring that user‑supplied values are bound safely. PDO (PHP Data Objects) provides a consistent API for prepared statements across many database systems. Using PDO you can prepare a statement, bind values, and execute it in a clear, object‑oriented way.  
+- PDO provides a uniform interface for accessing many different databases from PHP, simplifying code maintenance.  
+- Prepared statements separate SQL logic from data, preventing SQL injection by automatically escaping user‑supplied values.  
+- Binding parameters allows you to specify data types, which improves performance for repeated queries.  
+- Errors can be handled via exceptions, giving you precise control over failure cases.  
+- PDO also supports transactions, making it easy to ensure multiple related operations succeed or fail as a unit.  
 
-Code example:  
-<?php  
-// Create a new PDO connection (adjust DSN, username, and password as needed)  
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';  
-$username = 'dbuser';  
-$password = 'dbpass';  
+Code example (MySQL connection, INSERT with bound parameters, and error handling):
 
-try {  
-    $pdo = new PDO($dsn, $username, $password, [  
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors  
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC // Fetch results as associative arrays  
-    ]);  
-} catch (PDOException $e) {  
-    die('Connection failed: ' . $e->getMessage());  
-}  
+<?php
+// Database connection parameters
+$host = 'localhost';
+$db   = 'testdb';
+$user = 'dbuser';
+$pass = 'dbpassword';
+$charset = 'utf8mb4';
 
-// Prepare an INSERT statement with placeholders  
-$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';  
-$stmt = $pdo->prepare($sql);  
+// DSN (Data Source Name) tells PDO how to connect
+$dsn = "mysql:host=$host;dbname=$db;charset=$charset";
 
-// Sample data that might come from a form or API  
-$userData = [  
-    'username' => 'jane_doe',  
-    'email'    => 'jane@example.com'  
-];  
+// PDO options for better error handling and performance
+$options = [
+    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,       // Fetch results as associative arrays
+    PDO::ATTR_EMULATE_PREPARES   => false,                 // Use native prepares if supported
+];
 
-// Bind parameters and execute the statement  
-$stmt->execute([  
-    ':username' => $userData['username'], // Bind the username value  
-    ':email'    => $userData['email']     // Bind the email value  
-]);  
+try {
+    // Create a new PDO instance (connect to the database)
+    $pdo = new PDO($dsn, $user, $pass, $options);
+} catch (PDOException $e) {
+    // Connection failed – handle the error gracefully
+    die('Connection failed: ' . $e->getMessage());
+}
 
-// Check how many rows were inserted  
-echo $stmt->rowCount() . ' row(s) inserted.';  
+// SQL with placeholders for parameters
+$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())";
 
-// Retrieve the ID of the newly inserted record  
-$newId = $pdo->lastInsertId();  
-echo 'New user ID: ' . $newId;  
+// Prepare the statement once
+$stmt = $pdo->prepare($sql);
+
+// Sample data that might come from a form or API
+$data = [
+    ':username' => 'alice',
+    ':email'    => 'alice@example.com',
+];
+
+// Execute the prepared statement with bound values
+try {
+    $stmt->execute($data);
+    echo "User inserted successfully. New ID: " . $pdo->lastInsertId();
+} catch (PDOException $e) {
+    // Handle query errors (e.g., duplicate entry)
+    echo "Insert failed: " . $e->getMessage();
+}
 ?>
 */
 
 /* Laravel
-Topic: Laravel Form Request Validation  
+Topic Name: Laravel Service Container and Automatic Dependency Injection  
 
 Explanation:  
-Form Request classes encapsulate validation logic, keeping controllers clean and focused on handling requests. They are generated with artisan and extend the base FormRequest class, providing authorize() and rules() methods. authorize() determines if the user is permitted to make the request, while rules() returns an array of validation rules applied to the incoming data. You can also define custom error messages and attribute names by overriding messages() and attributes() methods. In a controller, type‑hinting the Form Request automatically triggers validation before the controller action runs.
+The Laravel service container is a powerful tool that manages class dependencies and performs dependency injection automatically. It resolves classes out of the box, injecting required dependencies via constructors or method signatures without manual instantiation. By binding abstractions to concrete implementations, you can easily swap implementations and write more testable code. The container also supports contextual bindings, allowing different implementations based on where they are injected. Understanding the service container enables you to leverage Laravel’s inversion of control (IoC) features for clean, maintainable architecture.  
 
-Code example with comments:  
-
-// app/Http/Requests/StorePostRequest.php  
+Code Example:  
 <?php  
+namespace App\Http\Controllers;  
 
-namespace App\Http\Requests;  
+use App\Services\ReportGeneratorInterface;  
+use Illuminate\Http\Request;  
 
-use Illuminate\Foundation\Http\FormRequest;  
-
-class StorePostRequest extends FormRequest  
+class ReportController extends Controller  
 {  
-    // Determine if the user is authorized to make this request  
-    public function authorize()  
+    // The ReportGeneratorInterface will be automatically resolved by the container  
+    protected $reportGenerator;  
+
+    // Constructor injection – the container injects the concrete class bound to the interface  
+    public function __construct(ReportGeneratorInterface $reportGenerator)  
     {  
-        // For example, only allow logged‑in users  
-        return auth()->check();  
+        $this->reportGenerator = $reportGenerator; // assign to a property for later use  
     }  
 
-    // Validation rules that apply to the request data  
-    public function rules()  
+    // An action that uses the injected service to generate a report  
+    public function generate(Request $request)  
     {  
-        return [  
-            'title'   => 'required|string|max:255',   // Title is required, must be a string, max 255 chars  
-            'body'    => 'required|string',           // Body must be present and be a string  
-            'tags'    => 'array',                     // Tags should be an array if present  
-            'tags.*'  => 'integer|exists:tags,id',    // Each tag ID must exist in the tags table  
-        ];  
-    }  
+        $type = $request->input('type', 'summary'); // get report type from request, default to 'summary'  
+        $data = $this->reportGenerator->make($type); // call the service method  
 
-    // Optional: custom messages for validation failures  
-    public function messages()  
-    {  
-        return [  
-            'title.required' => 'Please provide a title for your post.',  
-            'body.required'  => 'The post content cannot be empty.',  
-        ];  
-    }  
-
-    // Optional: custom attribute names for error messages  
-    public function attributes()  
-    {  
-        return [  
-            'title' => 'post title',  
-            'body'  => 'post body',  
-        ];  
+        return response()->json([  
+            'status' => 'success',  
+            'report' => $data,  
+        ]); // return the generated report as JSON  
     }  
 }  
 
-// app/Http/Controllers/PostController.php  
-<?php  
+// Service provider where the binding is defined  
+namespace App\Providers;  
 
-namespace App\Http\Controllers;  
+use Illuminate\Support\ServiceProvider;  
+use App\Services\ReportGeneratorInterface;  
+use App\Services\PdfReportGenerator;  
 
-use App\Http\Requests\StorePostRequest;  
-use App\Models\Post;  
-
-class PostController extends Controller  
+class ReportServiceProvider extends ServiceProvider  
 {  
-    // Store a new blog post using the validated request data  
-    public function store(StorePostRequest $request)  
+    public function register()  
     {  
-        // The request is already validated at this point  
-        $post = Post::create([  
-            'title' => $request->input('title'),  
-            'body'  => $request->input('body'),  
-            'user_id' => auth()->id(),  
-        ]);  
-
-        // Attach tags if they were provided  
-        if ($request->filled('tags')) {  
-            $post->tags()->attach($request->input('tags'));  
-        }  
-
-        return redirect()->route('posts.show', $post)->with('status', 'Post created successfully!');  
+        // Bind the interface to a concrete implementation  
+        $this->app->bind(ReportGeneratorInterface::class, PdfReportGenerator::class);  
     }  
+}  
+
+// Example of the concrete implementation  
+namespace App\Services;  
+
+class PdfReportGenerator implements ReportGeneratorInterface  
+{  
+    // Implementation of the interface method  
+    public function make(string $type)  
+    {  
+        // Generate PDF report based on the type (logic omitted for brevity)  
+        return "PDF report of type {$type} generated.";  
+    }  
+}  
+
+// Interface definition for type‑hinting  
+namespace App\Services;  
+
+interface ReportGeneratorInterface  
+{  
+    public function make(string $type); // method contract for generating reports  
 }  
 */
 
 /* MySQL
-Topic: MySQL Stored Procedures
+Topic: Common Table Expressions (CTEs) and Recursive Queries
 
 Explanation:
-A stored procedure is a named set of SQL statements that are stored on the server and can be invoked repeatedly.  
-It allows you to encapsulate complex logic, including control‑flow statements, loops, and conditional branching.  
-Parameters can be defined as IN, OUT, or INOUT to pass values into the procedure and retrieve results.  
-Stored procedures improve performance by reducing network round‑trips, as the logic runs entirely on the database server.  
-They also promote code reuse and make it easier to enforce business rules centrally.
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. CTEs improve readability by allowing you to break complex queries into named subqueries. They can be recursive, enabling you to work with hierarchical or tree‑structured data such as organization charts or bill‑of‑materials. Recursive CTEs consist of an anchor member (the base case) and a recursive member that references the CTE itself. The recursion stops when the result set no longer produces new rows, preventing infinite loops.
 
-Code example (with comments):
+Code example with comments:
 
-CREATE PROCEDURE GetTopCustomers(IN p_limit INT, OUT p_total INT)
-BEGIN
-    -- Declare a variable to hold the sum of total purchases
-    DECLARE v_sum INT DEFAULT 0;
+-- Define a recursive CTE to list all descendants of a manager in an employee hierarchy
+WITH RECURSIVE EmployeeHierarchy AS (
+    -- Anchor member: start with the manager whose ID is 3
+    SELECT employee_id, manager_id, employee_name, 1 AS level
+    FROM employees
+    WHERE manager_id = 3
 
-    -- Create a temporary table to hold the top customers by total amount spent
-    CREATE TEMPORARY TABLE tmp_top (
-        customer_id INT,
-        total_spent DECIMAL(10,2)
-    );
+    UNION ALL
 
-    -- Insert the top customers into the temporary table
-    INSERT INTO tmp_top (customer_id, total_spent)
-    SELECT customer_id, SUM(amount) AS total_spent
-    FROM orders
-    GROUP BY customer_id
-    ORDER BY total_spent DESC
-    LIMIT p_limit;
-
-    -- Calculate the overall total of the selected customers
-    SELECT SUM(total_spent) INTO v_sum FROM tmp_top;
-
-    -- Return the total via the OUT parameter
-    SET p_total = v_sum;
-
-    -- Return the result set of top customers to the caller
-    SELECT * FROM tmp_top;
-
-    -- Clean up the temporary table
-    DROP TEMPORARY TABLE tmp_top;
-END;
+    -- Recursive member: find employees whose manager is in the previous level
+    SELECT e.employee_id, e.manager_id, e.employee_name, eh.level + 1
+    FROM employees e
+    INNER JOIN EmployeeHierarchy eh ON e.manager_id = eh.employee_id
+)
+SELECT employee_id, manager_id, employee_name, level
+FROM EmployeeHierarchy
+ORDER BY level, employee_id;
 */
 
 /* JavaScript
-Topic: Asynchronous Functions with async/await
+Topic: Closures in JavaScript  
 
 Explanation:  
-Async/await is syntax sugar built on top of JavaScript Promises, allowing asynchronous code to be written in a synchronous style. By declaring a function with the async keyword, it automatically returns a Promise and enables the use of await inside it. The await operator pauses the function execution until the awaited Promise resolves or rejects, simplifying error handling with try/catch. This approach makes complex asynchronous flows, such as sequential API calls, easier to read and maintain. It is especially useful in modern web development where network requests and I/O operations are frequent.
+A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing. This happens because JavaScript functions form a lexical environment that captures the surrounding scope at the time they are created. Closures are useful for data privacy, creating function factories, and maintaining state between calls without using global variables. They are created automatically whenever an inner function references a variable from its outer scope. Understanding closures is essential for mastering asynchronous patterns and functional programming techniques in JavaScript.  
 
-Code Example (with comments):
+Code example:  
+function makeCounter(initialValue) {        // outer function creates a private variable  
+    let count = initialValue;               // this variable is captured by the inner function  
 
-// Simulate an asynchronous operation that resolves after a delay
-function fetchData(id) {
-    return new Promise((resolve, reject) => {
-        setTimeout(() => {
-            // Resolve with a mock result object
-            resolve({ id: id, value: "Data for " + id });
-        }, 1000);
-    });
-}
+    return function() {                    // inner function forms a closure over 'count'  
+        count += 1;                         // can read and modify the captured variable  
+        return count;                       // returns the updated count each time it's called  
+    };                                      // the inner function is returned and can be used later  
+}                                            // end of makeCounter  
 
-// Async function that retrieves two pieces of data sequentially
-async function loadCombinedData() {
-    try {
-        // Await the first fetch; execution pauses here until the Promise resolves
-        const first = await fetchData(1);
-        console.log("First result:", first);
+const counterA = makeCounter(0);  // counterA has its own independent 'count' variable  
+console.log(counterA()); // 1  
+console.log(counterA()); // 2  
 
-        // Await the second fetch; runs after the first completes
-        const second = await fetchData(2);
-        console.log("Second result:", second);
+const counterB = makeCounter(10); // counterB starts from a different initial value  
+console.log(counterB()); // 11  
+console.log(counterB()); // 12  
 
-        // Combine and return the results
-        return { first, second };
-    } catch (error) {
-        // Handle any errors that occurred during the async calls
-        console.error("Error loading data:", error);
-        throw error; // Re‑throw if further handling is needed
-    }
-}
-
-// Call the async function and handle its returned Promise
-loadCombinedData()
-    .then(combined => console.log("Combined data:", combined))
-    .catch(err => console.error("Failed to load combined data:", err));
+// Even though makeCounter has finished execution, the inner functions still have access to 'count' via closures.  
 */
 
 /* AI
-Topic: Prompt Engineering for Structured JSON Output with LLMs  
+Topic: Function Calling with the OpenAI API  
 
 Explanation:  
-Prompt engineering is the practice of crafting input text to guide large language models (LLMs) toward desired behavior. By explicitly specifying the output format, role, and examples, you can coax the model to return well‑structured data such as JSON, which is easy to parse programmatically. Including a brief system instruction, a clear user request, and a few-shot example reduces ambiguity and improves consistency across calls. This technique is especially useful when integrating LLMs into pipelines that require downstream processing, validation, or storage. Properly designed prompts also help mitigate hallucinations by constraining the model’s creative freedom to the required schema.  
+Function calling lets a language model decide when to invoke a predefined function and supplies the arguments in a structured JSON format. This bridges the gap between free‑form text generation and reliable programmatic actions, allowing the model to fetch data, perform calculations, or trigger side effects safely. Developers describe the function signature once, and the model handles the rest, reducing prompt engineering complexity. The approach is especially useful for building assistants that need up‑to‑date information or precise operations without manual parsing. It also provides a clear audit trail of which functions were called and with what parameters.  
 
-Code example (Python, using OpenAI’s ChatCompletion API):  
+Code example (Python, using openai>=1.0):  
 
 import os  
 import json  
-from openai import OpenAI  
+import openai  
 
-# Initialize client – assumes OPENAI_API_KEY is set in environment  
-client = OpenAI()  
+# Load your API key from an environment variable  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Define a system message that sets the role and output expectations  
-system_msg = {  
-    "role": "system",  
-    "content": (  
-        "You are a helpful assistant that extracts key information from a user’s description and returns it as a JSON object. "  
-        "The JSON must contain the fields: title (string), keywords (list of strings), and summary (string). "  
-        "Do not include any additional text or explanations."  
-    )  
+# Define a function that the model may call  
+def get_weather(city: str, date: str) -> str:  
+    # In a real app you would query a weather service here  
+    # For demonstration we return a static string  
+    return f"The weather in {city} on {date} will be sunny with a high of 25°C."  
+
+# Register the function schema for the API request  
+weather_function = {  
+    "name": "get_weather",  
+    "description": "Provides weather forecast for a given city and date",  
+    "parameters": {  
+        "type": "object",  
+        "properties": {  
+            "city": {  
+                "type": "string",  
+                "description": "Name of the city, e.g., 'Paris'"  
+            },  
+            "date": {  
+                "type": "string",  
+                "description": "Date in ISO format, e.g., '2024-12-01'"  
+            }  
+        },  
+        "required": ["city", "date"]  
+    }  
 }  
 
-# Provide a few‑shot example to illustrate the required format  
-example_user = {  
-    "role": "user",  
-    "content": "Describe a recent project where you built a recommendation system for e‑commerce."  
-}  
-
-example_assistant = {  
-    "role": "assistant",  
-    "content": (  
-        '{\n'  
-        '  "title": "E‑commerce Recommendation System",\n'  
-        '  "keywords": ["collaborative filtering", "product ranking", "Python", "Spark"],\n'  
-        '  "summary": "Developed a real‑time recommendation engine using collaborative filtering, improving click‑through rate by 12%."\n'  
-        '}'\n" )  
-}  
-
-# Actual user query  
-user_query = {  
-    "role": "user",  
-    "content": "Explain a tool you created to automate data cleaning for CSV files, highlighting its main features."  
-}  
-
-# Send the messages to the model  
-response = client.chat.completions.create(  
+# Send a user query that may require a function call  
+response = openai.ChatCompletion.create(  
     model="gpt-4o-mini",  
-    messages=[system_msg, example_user, example_assistant, user_query],  
-    temperature=0.0,   # deterministic output  
+    messages=[{"role": "user", "content": "What will the weather be in Tokyo on 2024-11-15?"}],  
+    tools=[weather_function],  
+    tool_choice="auto"  
 )  
 
-# The model’s raw reply (should be a JSON string)  
-raw_output = response.choices[0].message.content.strip()  
+message = response.choices[0].message  
 
-# Parse the JSON safely  
-try:  
-    result = json.loads(raw_output)  
-    print("Parsed JSON:", result)  
-except json.JSONDecodeError as e:  
-    print("Failed to parse JSON:", e)  
-    print("Raw model output:", raw_output)  
+if message.get("tool_calls"):  
+    # The model decided to call a function  
+    tool_call = message["tool_calls"][0]  
+    function_name = tool_call["function"]["name"]  
+    arguments = json.loads(tool_call["function"]["arguments"])  
+    # Execute the corresponding Python function  
+    if function_name == "get_weather":  
+        function_response = get_weather(**arguments)  
+        # Send the function result back to the model for a final answer  
+        follow_up = openai.ChatCompletion.create(  
+            model="gpt-4o-mini",  
+            messages=[  
+                {"role": "user", "content": "What will the weather be in Tokyo on 2024-11-15?"},  
+                {"role": "assistant", "tool_calls": [tool_call]},  
+                {"role": "tool", "name": function_name, "content": function_response}  
+            ]  
+        )  
+        print(follow_up.choices[0].message["content"])  
+else:  
+    # The model answered without needing a function  
+    print(message["content"])
 */
 
