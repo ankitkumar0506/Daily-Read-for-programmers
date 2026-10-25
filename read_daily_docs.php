@@ -1,221 +1,221 @@
 <?php
-// 2026-10-24 06:11:05
+// 2026-10-25 06:32:04
 
 /* PHP
-Topic: PHP Generators (the yield keyword)
+Topic: Prepared Statements with PDO (PHP Data Objects)
 
-Explanation:
-Generators allow you to create iterators without building an entire array in memory.  
-When a function contains the keyword yield, it returns a Generator object that produces values one at a time.  
-Each call to yield pauses the function, preserving its local state, and resumes from that point on the next iteration.  
-This makes handling large data sets or streams much more memory‑efficient.  
-Generators are especially useful for reading large files, processing database rows, or implementing infinite sequences.
+Explanation:  
+Prepared statements separate the SQL query structure from its input values, which prevents SQL injection attacks. PDO provides a uniform interface for accessing many different databases, making code portable across MySQL, PostgreSQL, SQLite, etc. When a statement is prepared, the database parses and compiles it once, then you can execute it multiple times with different parameters for better performance. Binding values can be done by name or by position, and PDO automatically handles the appropriate quoting and escaping. Errors can be caught with exceptions, allowing clean error handling in production code.
 
-Code Example:
+Code example with comments:  
+
 <?php
-// A simple generator that yields numbers from 1 up to $max
-function getNumbers(int $max): Generator
-{
-    for ($i = 1; $i <= $max; $i++) {
-        // yield returns the current number and pauses execution
-        yield $i;
-    }
-}
+// Create a new PDO instance (replace DSN, username, password with real credentials)
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$user = 'dbuser';
+$pass = 'dbpass';
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch associative arrays
+];
+$pdo = new PDO($dsn, $user, $pass, $options);
 
-// Using the generator in a foreach loop
-foreach (getNumbers(5) as $number) {
-    // Each $number is produced on demand, no array is stored
-    echo $number . PHP_EOL;
+// Prepare an INSERT statement with named placeholders
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
+$stmt = $pdo->prepare($sql);
+
+// Bind values to the placeholders and execute
+$username = 'alice';
+$email = 'alice@example.com';
+$stmt->bindParam(':username', $username, PDO::PARAM_STR);
+$stmt->bindParam(':email', $email, PDO::PARAM_STR);
+$stmt->execute(); // The row is inserted safely
+
+// Prepare a SELECT statement with a positional placeholder
+$selectSql = 'SELECT id, username, email FROM users WHERE email = ?';
+$selectStmt = $pdo->prepare($selectSql);
+
+// Execute with the email value supplied as an array
+$selectStmt->execute([$email]);
+
+// Fetch and display the result
+$userData = $selectStmt->fetch();
+if ($userData) {
+    echo 'User ID: ' . $userData['id'] . PHP_EOL;
+    echo 'Username: ' . $userData['username'] . PHP_EOL;
+    echo 'Email: ' . $userData['email'] . PHP_EOL;
+} else {
+    echo 'No user found.' . PHP_EOL;
 }
 ?>
 */
 
 /* Laravel
-Laravel Service Container and Dependency Injection
+Laravel Queues with Redis
 
 Explanation:
-The Laravel service container is a powerful tool that manages class dependencies and performs automatic injection. It resolves objects by reading type hints in constructors or method signatures, allowing you to decouple your code and follow the inversion of control principle. By binding interfaces to concrete implementations, you can easily swap implementations without changing the dependent code. The container also supports contextual binding, singleton bindings, and binding closures for complex object creation. Understanding the container is essential for writing clean, testable, and maintainable Laravel applications.
+Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or interacting with external APIs, improving the responsiveness of your web application. By configuring the queue driver to use Redis, you get a fast, in‑memory data store that can handle high throughput and low latency. Each queued job is serialized and stored in a Redis list, from which workers pull and execute the jobs asynchronously. Laravel provides artisan commands to start worker processes that continuously listen for new jobs and process them in the background. Using Redis also enables you to scale workers across multiple servers, achieving horizontal scalability for background processing.
 
-Code Example:
+Code example (Job class and dispatch):
+
 <?php
-namespace App\Http\Controllers;
+namespace App\Jobs;
 
-use App\Contracts\PaymentGateway;
-use App\Services\StripePaymentGateway;
-use Illuminate\Http\Request;
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
 
-// Service provider where the binding is defined
-class AppServiceProvider extends ServiceProvider
+class SendWelcomeEmail implements ShouldQueue
 {
-    public function register()
-    {
-        // Bind the interface to a concrete class; a new instance is created each time
-        $this->app->bind(PaymentGateway::class, StripePaymentGateway::class);
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-        // Example of a singleton binding – the same instance is reused
-        $this->app->singleton('logger', function ($app) {
-            return new \Monolog\Logger('app');
-        });
+    protected $userEmail;
+
+    // Constructor receives data needed for the job
+    public function __construct(string $userEmail)
+    {
+        $this->userEmail = $userEmail;
+    }
+
+    // The handle method contains the logic that will run in the background
+    public function handle()
+    {
+        // Simulate sending email (replace with real Mail::send call)
+        \Log::info("Sending welcome email to {$this->userEmail}");
+        // Mail::to($this->userEmail)->send(new WelcomeMail());
     }
 }
 
-// Define an interface for the payment gateway
-interface PaymentGateway
-{
-    public function charge(float $amount, string $currency);
-}
+// Dispatching the job from a controller or any other place
+use App\Jobs\SendWelcomeEmail;
 
-// Concrete implementation of the interface
-class StripePaymentGateway implements PaymentGateway
-{
-    public function charge(float $amount, string $currency)
-    {
-        // Logic to interact with Stripe's API
-        // This is just a placeholder for demonstration
-        return "Charged {$amount} {$currency} via Stripe.";
-    }
-}
+// This will push the job onto the Redis queue named "default"
+SendWelcomeEmail::dispatch('newuser@example.com');
 
-// Controller that receives the dependency automatically
-class CheckoutController extends Controller
-{
-    protected $gateway;
-
-    // Laravel injects the concrete class based on the binding above
-    public function __construct(PaymentGateway $gateway)
-    {
-        $this->gateway = $gateway;
-    }
-
-    public function process(Request $request)
-    {
-        $amount = $request->input('amount');
-        $currency = $request->input('currency', 'USD');
-
-        // Use the injected payment gateway to charge the customer
-        $result = $this->gateway->charge($amount, $currency);
-
-        return response()->json(['message' => $result]);
-    }
-}
+// To start a worker that processes jobs from Redis, run in terminal:
+// php artisan queue:work redis --queue=default --sleep=3 --tries=3
 ?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTE) and Recursive Queries
+Topic: Common Table Expressions (CTEs) and Recursive Queries  
 
-Explanation:
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs improve readability by allowing you to break complex queries into logical building blocks.  
-Recursive CTEs enable you to work with hierarchical data, such as organizational charts or bill‑of‑materials.  
-The WITH clause defines the CTE; the recursive part must contain a UNION ALL between an anchor query and a recursive query.  
-Recursive CTEs execute repeatedly until the recursive query returns no rows, effectively walking the hierarchy.
+Explanation:  
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It is defined using the WITH clause and improves query readability by allowing you to break complex logic into named subqueries. CTEs can be recursive, enabling you to work with hierarchical data such as organizational charts or tree structures. They are scoped to the statement they belong to, so they do not persist beyond that execution. MySQL 8.0+ supports both non‑recursive and recursive CTEs.
 
-Code example with comments:
--- Define a recursive CTE named employee_hierarchy
-WITH RECURSIVE employee_hierarchy AS (
-    -- Anchor member: start with the top‑level manager (e.g., employee_id = 1)
-    SELECT employee_id, manager_id, employee_name, 1 AS level
-    FROM employees
-    WHERE employee_id = 1
-    UNION ALL
-    -- Recursive member: find direct reports of the previous level
-    SELECT e.employee_id, e.manager_id, e.employee_name, eh.level + 1
-    FROM employees e
-    INNER JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id
-)
--- Use the CTE to retrieve the full hierarchy with levels
-SELECT employee_id, manager_id, employee_name, level
-FROM employee_hierarchy
-ORDER BY level, employee_id;
+Code example (with comments):
+
+WITH RECURSIVE employee_hierarchy AS ( 
+    -- Anchor member: select the top‑level manager(s) 
+    SELECT employee_id, manager_id, employee_name, 1 AS level 
+    FROM employees 
+    WHERE manager_id IS NULL 
+    UNION ALL 
+    -- Recursive member: join to find subordinates 
+    SELECT e.employee_id, e.manager_id, e.employee_name, eh.level + 1 
+    FROM employees e 
+    INNER JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id 
+) 
+SELECT employee_id, manager_id, employee_name, level 
+FROM employee_hierarchy 
+ORDER BY level, manager_id;   -- Result shows the hierarchy with level numbers  
 */
 
 /* JavaScript
-Topic: Asynchronous Programming with Promises and async/await  
+Topic: Closures in JavaScript
 
 Explanation:  
-- JavaScript runs in a single thread, so long‑running operations (e.g., network requests) must be handled without blocking the event loop.  
-- A Promise represents a value that may be available now, later, or never, and provides then and catch methods for chaining.  
-- The async keyword turns a function into one that returns a Promise, allowing you to write asynchronous code that looks synchronous.  
-- Inside an async function, the await keyword pauses execution until the awaited Promise resolves or rejects, simplifying error handling with try/catch.  
-- Using async/await improves readability and maintainability compared to deeply nested then/catch chains.  
+A closure is a function that retains access to its lexical environment even after the outer function has finished executing. This means the inner function can reference variables declared in the outer function’s scope. Closures enable data encapsulation, private state, and function factories. They are created every time a function is defined, not when it is called. Understanding closures is essential for working with callbacks, event handlers, and module patterns.
 
-Code example (with comments):  
-function fetchData(url) {  
-    // Return a Promise that resolves with the fetched JSON data  
-    return fetch(url).then(response => {  
-        if (!response.ok) {  
-            // Reject the Promise if the HTTP status is not OK  
-            throw new Error(`Network error: ${response.status}`);  
-        }  
-        return response.json();  
-    });  
-}  
+Code example with comments:
 
-async function loadAndProcess() {  
-    try {  
-        // Await the Promise returned by fetchData; execution pauses here until it resolves  
-        const data = await fetchData('https://api.example.com/items');  
-        // Process the data after it has been retrieved  
-        console.log('Received items:', data);  
-    } catch (err) {  
-        // Handle any errors from fetchData or from the await expression  
-        console.error('Failed to load data:', err.message);  
-    }  
-}  
+function makeCounter(initialValue) {        // outer function creates a private variable
+    let count = initialValue;               // this variable is captured by the inner function
 
-// Call the async function; it returns a Promise that we can ignore or handle further  
-loadAndProcess();
+    return function increment(step) {       // the returned function forms a closure
+        count += step;                      // it can read and modify 'count' each call
+        return count;                       // expose the updated value
+    };
+}
+
+const counter = makeCounter(10);            // counter is a closure with its own 'count'
+console.log(counter(2));  // Output: 12       // first call, adds 2
+console.log(counter(5));  // Output: 17       // second call, adds 5
+console.log(counter(-3)); // Output: 14       // third call, subtracts 3
+
+// The variable 'count' remains private; it cannot be accessed directly from outside.
 */
 
 /* AI
-Topic: Prompt Engineering for Few‑Shot Learning with GPT‑4  
+Topic: Function Calling with the OpenAI Chat Completion API (Python)
 
-Explanation:  
-1. Few‑shot prompting supplies the model with a small number of example inputs and outputs within the same prompt, guiding it to infer the desired pattern.  
-2. Effective prompt engineering balances clarity, brevity, and enough context so the model can generalize from the examples.  
-3. Structure the prompt with a clear instruction, a separator, a few labeled examples, another separator, and finally the new query.  
-4. Use consistent formatting (e.g., JSON, bullet points, or “Q:”/“A:” tags) to reduce ambiguity for the model.  
-5. Adjust temperature, max_tokens, and stop sequences in the API call to control creativity and ensure the model stops after producing the answer.  
+Explanation:
+Function calling lets a language model decide when to invoke a user‑defined function and automatically formats the arguments.  
+You describe the function’s name, parameters, and JSON schema, and the model returns a "function_call" object when appropriate.  
+This enables structured outputs, reduces parsing errors, and bridges LLM reasoning with executable code.  
+The approach works with GPT‑4‑turbo and newer models, supporting multiple functions in a single request.  
+Typical use cases include data validation, database queries, or dynamic UI generation from natural language.
 
-Code example (Python, OpenAI API) with comments:  
+Code example (Python, using the official openai package):
+import openai
 
-import os  
-import openai  
+# Set your API key – replace with your actual key or use an environment variable
+openai.api_key = "sk-..."
 
-# Load your OpenAI API key from environment variable  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Define the function the model can call
+def get_weather(city: str, unit: str = "celsius"):
+    """Mock weather lookup – in a real app, call an external API."""
+    fake_data = {"city": city, "temperature": 22, "unit": unit}
+    return fake_data
 
-def few_shot_completion(user_question):  
-    # Define the prompt template with instruction, examples, and placeholder for new query  
-    prompt = (  
-        "You are an expert assistant that converts natural‑language math word problems into Python code.\n"  
-        "### Examples ###\n"  
-        "Q: What is the sum of the first 10 positive integers?\n"  
-        "A: total = sum(range(1, 11))\n"  
-        "Q: Calculate the factorial of 5.\n"  
-        "A: import math\n"  
-        "   result = math.factorial(5)\n"  
-        "### End of examples ###\n"  
-        "Q: " + user_question + "\n"  
-        "A:"  
-    )  
+# Describe the function to the model in JSON schema form
+weather_function = {
+    "name": "get_weather",
+    "description": "Retrieve the current weather for a given city.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "city": {"type": "string", "description": "Name of the city"},
+            "unit": {"type": "string", "enum": ["celsius", "fahrenheit"], "description": "Temperature unit"}
+        },
+        "required": ["city"]
+    }
+}
 
-    response = openai.ChatCompletion.create(  
-        model="gpt-4o-mini",                     # lightweight but capable model  
-        messages=[{"role": "user", "content": prompt}],  
-        temperature=0.0,                         # deterministic output for code generation  
-        max_tokens=150,                          # enough space for a short code snippet  
-        stop=["Q:", "###"]                       # stop when next example would start  
-    )  
+# User prompt asking for weather information
+user_message = {"role": "user", "content": "What's the weather like in Tokyo right now?"}
 
-    # Extract the generated code from the assistant's reply  
-    answer = response.choices[0].message.content.strip()  
-    return answer  
+# Send the chat request with the function description
+response = openai.ChatCompletion.create(
+    model="gpt-4-1106-preview",
+    messages=[user_message],
+    functions=[weather_function],
+    function_call="auto"  # Let the model decide whether to call the function
+)
 
-# Example usage  
-question = "Find the greatest common divisor of 48 and 180."  
-generated_code = few_shot_completion(question)  
-print("Generated Python code:\n", generated_code)  
+# Extract the assistant's decision
+choice = response.choices[0]
+if choice.message.get("function_call"):
+    # Parse the arguments the model wants to pass
+    import json
+    function_args = json.loads(choice.message["function_call"]["arguments"])
+    # Call the real function with those arguments
+    function_response = get_weather(**function_args)
+    # Send the function result back to the model for a final answer
+    follow_up = openai.ChatCompletion.create(
+        model="gpt-4-1106-preview",
+        messages=[
+            user_message,
+            choice.message,  # The assistant's function call request
+            {"role": "function", "name": "get_weather", "content": json.dumps(function_response)}
+        ]
+    )
+    final_answer = follow_up.choices[0].message["content"]
+    print(final_answer)
+else:
+    # The model chose to answer without a function call
+    print(choice.message["content"])
 */
 
