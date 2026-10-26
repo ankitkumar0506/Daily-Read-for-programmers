@@ -1,64 +1,72 @@
 <?php
-// 2026-10-25 06:32:04
+// 2026-10-26 06:44:21
 
 /* PHP
-Topic: Prepared Statements with PDO (PHP Data Objects)
+Topic: PHP Traits  
 
 Explanation:  
-Prepared statements separate the SQL query structure from its input values, which prevents SQL injection attacks. PDO provides a uniform interface for accessing many different databases, making code portable across MySQL, PostgreSQL, SQLite, etc. When a statement is prepared, the database parses and compiles it once, then you can execute it multiple times with different parameters for better performance. Binding values can be done by name or by position, and PDO automatically handles the appropriate quoting and escaping. Errors can be caught with exceptions, allowing clean error handling in production code.
+Traits are a mechanism for code reuse in single inheritance languages like PHP.  
+A trait groups methods that can be inserted into multiple classes without using inheritance.  
+They help avoid duplication when different classes need the same functionality but do not share a common parent.  
+Traits can also define abstract methods that the using class must implement, providing a contract.  
+When a class uses a trait, the trait’s methods become part of that class’s method set.  
 
 Code example with comments:  
 
 <?php
-// Create a new PDO instance (replace DSN, username, password with real credentials)
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$user = 'dbuser';
-$pass = 'dbpass';
-$options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch associative arrays
-];
-$pdo = new PDO($dsn, $user, $pass, $options);
-
-// Prepare an INSERT statement with named placeholders
-$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
-$stmt = $pdo->prepare($sql);
-
-// Bind values to the placeholders and execute
-$username = 'alice';
-$email = 'alice@example.com';
-$stmt->bindParam(':username', $username, PDO::PARAM_STR);
-$stmt->bindParam(':email', $email, PDO::PARAM_STR);
-$stmt->execute(); // The row is inserted safely
-
-// Prepare a SELECT statement with a positional placeholder
-$selectSql = 'SELECT id, username, email FROM users WHERE email = ?';
-$selectStmt = $pdo->prepare($selectSql);
-
-// Execute with the email value supplied as an array
-$selectStmt->execute([$email]);
-
-// Fetch and display the result
-$userData = $selectStmt->fetch();
-if ($userData) {
-    echo 'User ID: ' . $userData['id'] . PHP_EOL;
-    echo 'Username: ' . $userData['username'] . PHP_EOL;
-    echo 'Email: ' . $userData['email'] . PHP_EOL;
-} else {
-    echo 'No user found.' . PHP_EOL;
+// Define a trait that provides logging capabilities
+trait LoggerTrait {
+    // Log a message with a timestamp
+    public function log(string $message): void {
+        $timestamp = date('Y-m-d H:i:s');
+        echo "[{$timestamp}] {$message}\n";
+    }
 }
+
+// First class that uses the LoggerTrait
+class User {
+    use LoggerTrait;               // Insert the trait’s methods into this class
+
+    private $name;
+
+    public function __construct(string $name) {
+        $this->name = $name;
+        $this->log("User '{$this->name}' created.");
+    }
+}
+
+// Second class that also uses the same trait
+class Order {
+    use LoggerTrait;               // Same trait reused here
+
+    private $id;
+
+    public function __construct(int $id) {
+        $this->id = $id;
+        $this->log("Order #{$this->id} initialized.");
+    }
+}
+
+// Demonstration
+$user  = new User('Alice');
+$order = new Order(123);
 ?>
 */
 
 /* Laravel
-Laravel Queues with Redis
+Topic: Laravel Queues and Jobs  
 
-Explanation:
-Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or interacting with external APIs, improving the responsiveness of your web application. By configuring the queue driver to use Redis, you get a fast, in‑memory data store that can handle high throughput and low latency. Each queued job is serialized and stored in a Redis list, from which workers pull and execute the jobs asynchronously. Laravel provides artisan commands to start worker processes that continuously listen for new jobs and process them in the background. Using Redis also enables you to scale workers across multiple servers, achieving horizontal scalability for background processing.
+Explanation:  
+Laravel queues allow time‑consuming tasks to be processed in the background, keeping HTTP requests fast and responsive.  
+A job represents a single unit of work that can be dispatched to any configured queue driver (database, Redis, SQS, etc.).  
+When a job is dispatched, Laravel serializes the job class, stores it in the queue, and a worker later unserializes and runs the handle method.  
+You can control the number of attempts, delay before execution, and specify which queue connection or queue name to use.  
+Queue workers are started with an Artisan command and can be supervised to run continuously in production.
 
 Code example (Job class and dispatch):
 
 <?php
+
 namespace App\Jobs;
 
 use Illuminate\Bus\Queueable;
@@ -66,156 +74,145 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use App\Models\Order;
+use Mail;
 
-class SendWelcomeEmail implements ShouldQueue
+// The job will be placed on the default queue and processed asynchronously
+class SendOrderConfirmation implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected $userEmail;
+    protected $orderId;
 
-    // Constructor receives data needed for the job
-    public function __construct(string $userEmail)
+    // The number of times the job may be attempted.
+    public $tries = 3;
+
+    // Optional delay (in seconds) before the job becomes available.
+    public $delay = 60;
+
+    public function __construct(int $orderId)
     {
-        $this->userEmail = $userEmail;
+        $this->orderId = $orderId;
     }
 
-    // The handle method contains the logic that will run in the background
+    // This method is executed by the queue worker.
     public function handle()
     {
-        // Simulate sending email (replace with real Mail::send call)
-        \Log::info("Sending welcome email to {$this->userEmail}");
-        // Mail::to($this->userEmail)->send(new WelcomeMail());
+        $order = Order::findOrFail($this->orderId);
+
+        // Example of sending an email; any other heavy work can go here.
+        Mail::to($order->user->email)->send(new \App\Mail\OrderConfirmed($order));
     }
 }
 
-// Dispatching the job from a controller or any other place
-use App\Jobs\SendWelcomeEmail;
+// Somewhere in a controller or service, dispatch the job:
+use App\Jobs\SendOrderConfirmation;
 
-// This will push the job onto the Redis queue named "default"
-SendWelcomeEmail::dispatch('newuser@example.com');
+// After an order is created:
+$order = Order::create($request->all());
 
-// To start a worker that processes jobs from Redis, run in terminal:
-// php artisan queue:work redis --queue=default --sleep=3 --tries=3
+// Dispatch the job to the queue; it will run in the background.
+SendOrderConfirmation::dispatch($order->id);   // or dispatch(new SendOrderConfirmation($order->id));
+
 ?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) and Recursive Queries  
+Topic: MySQL Prepared Statements  
 
 Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It is defined using the WITH clause and improves query readability by allowing you to break complex logic into named subqueries. CTEs can be recursive, enabling you to work with hierarchical data such as organizational charts or tree structures. They are scoped to the statement they belong to, so they do not persist beyond that execution. MySQL 8.0+ supports both non‑recursive and recursive CTEs.
+Prepared statements let you separate SQL code from the data values that are supplied at execution time. This improves security by preventing SQL injection, because the query structure is fixed before any user input is bound. They also boost performance for repeated executions of the same statement with different parameters, as the server parses and optimizes the query only once. In MySQL you create a prepared statement using PREPARE, assign values with SET or USING, and execute it with EXECUTE. Finally, you release the resources with DEALLOCATE PREPARE.  
 
-Code example (with comments):
+Code example (with comments):  
+-- Define a variable to hold the SQL statement with placeholders  
+SET @sql = 'INSERT INTO employees (first_name, last_name, salary) VALUES (?, ?, ?)';  
 
-WITH RECURSIVE employee_hierarchy AS ( 
-    -- Anchor member: select the top‑level manager(s) 
-    SELECT employee_id, manager_id, employee_name, 1 AS level 
-    FROM employees 
-    WHERE manager_id IS NULL 
-    UNION ALL 
-    -- Recursive member: join to find subordinates 
-    SELECT e.employee_id, e.manager_id, e.employee_name, eh.level + 1 
-    FROM employees e 
-    INNER JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id 
-) 
-SELECT employee_id, manager_id, employee_name, level 
-FROM employee_hierarchy 
-ORDER BY level, manager_id;   -- Result shows the hierarchy with level numbers  
+-- Prepare the statement for later execution  
+PREPARE stmt_insert FROM @sql;  
+
+-- Set example values for the placeholders  
+SET @first = 'Alice';  
+SET @last = 'Johnson';  
+SET @sal = 72000;  
+
+-- Execute the prepared statement, binding the variables to the placeholders  
+EXECUTE stmt_insert USING @first, @last, @sal;  
+
+-- Clean up by deallocating the prepared statement  
+DEALLOCATE PREPARE stmt_insert;
 */
 
 /* JavaScript
 Topic: Closures in JavaScript
 
-Explanation:  
-A closure is a function that retains access to its lexical environment even after the outer function has finished executing. This means the inner function can reference variables declared in the outer function’s scope. Closures enable data encapsulation, private state, and function factories. They are created every time a function is defined, not when it is called. Understanding closures is essential for working with callbacks, event handlers, and module patterns.
+Explanation:
+A closure is a function that retains access to variables from its lexical scope even after that outer function has finished executing.  
+Closures enable data encapsulation, allowing private state that cannot be accessed directly from outside.  
+They are created every time a function is defined, capturing the surrounding environment at that moment.  
+Common use cases include function factories, memoization, and maintaining state in asynchronous callbacks.  
+Understanding closures helps avoid common pitfalls such as unintentionally sharing mutable state between invocations.
 
-Code example with comments:
+Code Example:
+// A function that creates a counter using a closure
+function createCounter(initialValue) {
+    // `count` is private to the returned function
+    let count = initialValue;
 
-function makeCounter(initialValue) {        // outer function creates a private variable
-    let count = initialValue;               // this variable is captured by the inner function
-
-    return function increment(step) {       // the returned function forms a closure
-        count += step;                      // it can read and modify 'count' each call
-        return count;                       // expose the updated value
+    // The inner function forms a closure over `count`
+    return function() {
+        count += 1;            // Modify the captured variable
+        return count;          // Return the updated value
     };
 }
 
-const counter = makeCounter(10);            // counter is a closure with its own 'count'
-console.log(counter(2));  // Output: 12       // first call, adds 2
-console.log(counter(5));  // Output: 17       // second call, adds 5
-console.log(counter(-3)); // Output: 14       // third call, subtracts 3
+// Create two independent counters
+const counterA = createCounter(0);
+const counterB = createCounter(10);
 
-// The variable 'count' remains private; it cannot be accessed directly from outside.
+console.log(counterA()); // 1
+console.log(counterA()); // 2
+console.log(counterB()); // 11
+console.log(counterB()); // 12
+
+// Even though `createCounter` has finished, the inner functions still
+// have access to their own `count` variables because of the closure.
 */
 
 /* AI
-Topic: Function Calling with the OpenAI Chat Completion API (Python)
+Topic: Prompt Engineering – Controlling LLM Output with Temperature and Stop Tokens  
 
-Explanation:
-Function calling lets a language model decide when to invoke a user‑defined function and automatically formats the arguments.  
-You describe the function’s name, parameters, and JSON schema, and the model returns a "function_call" object when appropriate.  
-This enables structured outputs, reduces parsing errors, and bridges LLM reasoning with executable code.  
-The approach works with GPT‑4‑turbo and newer models, supporting multiple functions in a single request.  
-Typical use cases include data validation, database queries, or dynamic UI generation from natural language.
+Explanation:  
+Prompt engineering is the practice of designing inputs that guide large language models (LLMs) to produce desired responses. By adjusting the temperature parameter you can trade off creativity for determinism: low values (e.g., 0.2) make the model repeat the most likely tokens, while high values (e.g., 0.9) increase randomness. Adding stop tokens tells the model where to halt generation, preventing trailing irrelevant text. Combining these settings with carefully worded prompts yields more reliable and controllable outputs, which is crucial for applications like code generation, summarization, or conversational agents. The example below demonstrates how to set temperature and stop tokens using OpenAI’s API in Python.  
 
-Code example (Python, using the official openai package):
+Code example (Python with comments):
+import os
 import openai
 
-# Set your API key – replace with your actual key or use an environment variable
-openai.api_key = "sk-..."
+# Load your OpenAI API key from environment variable
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Define the function the model can call
-def get_weather(city: str, unit: str = "celsius"):
-    """Mock weather lookup – in a real app, call an external API."""
-    fake_data = {"city": city, "temperature": 22, "unit": unit}
-    return fake_data
-
-# Describe the function to the model in JSON schema form
-weather_function = {
-    "name": "get_weather",
-    "description": "Retrieve the current weather for a given city.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "city": {"type": "string", "description": "Name of the city"},
-            "unit": {"type": "string", "enum": ["celsius", "fahrenheit"], "description": "Temperature unit"}
-        },
-        "required": ["city"]
-    }
-}
-
-# User prompt asking for weather information
-user_message = {"role": "user", "content": "What's the weather like in Tokyo right now?"}
-
-# Send the chat request with the function description
-response = openai.ChatCompletion.create(
-    model="gpt-4-1106-preview",
-    messages=[user_message],
-    functions=[weather_function],
-    function_call="auto"  # Let the model decide whether to call the function
-)
-
-# Extract the assistant's decision
-choice = response.choices[0]
-if choice.message.get("function_call"):
-    # Parse the arguments the model wants to pass
-    import json
-    function_args = json.loads(choice.message["function_call"]["arguments"])
-    # Call the real function with those arguments
-    function_response = get_weather(**function_args)
-    # Send the function result back to the model for a final answer
-    follow_up = openai.ChatCompletion.create(
-        model="gpt-4-1106-preview",
-        messages=[
-            user_message,
-            choice.message,  # The assistant's function call request
-            {"role": "function", "name": "get_weather", "content": json.dumps(function_response)}
-        ]
+def generate_completion(prompt, temperature=0.3, max_tokens=150, stop=None):
+    """
+    Calls the OpenAI completion endpoint with custom temperature and stop tokens.
+    Returns the generated text.
+    """
+    response = openai.Completion.create(
+        model="text-davinci-003",   # Choose the appropriate LLM
+        prompt=prompt,              # The user‑crafted prompt
+        temperature=temperature,    # Controls randomness (0.0 = deterministic)
+        max_tokens=max_tokens,      # Limit the length of the response
+        stop=stop                    # List of strings where generation should stop
     )
-    final_answer = follow_up.choices[0].message["content"]
-    print(final_answer)
-else:
-    # The model chose to answer without a function call
-    print(choice.message["content"])
+    # Extract the generated text from the API response
+    return response.choices[0].text.strip()
+
+# Example usage
+my_prompt = "Write a concise Python function that checks if a string is a palindrome."
+# Stop generation after the function definition to avoid extra commentary
+stop_sequences = ["\\n\\n", "# End of function"]
+result = generate_completion(my_prompt, temperature=0.2, stop=stop_sequences)
+
+print("Generated code:")
+print(result)
 */
 
