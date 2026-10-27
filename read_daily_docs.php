@@ -1,218 +1,275 @@
 <?php
-// 2026-10-26 06:44:21
+// 2026-10-27 06:38:21
 
 /* PHP
-Topic: PHP Traits  
+Topic: Using Prepared Statements with PDO for Secure Database Queries
 
-Explanation:  
-Traits are a mechanism for code reuse in single inheritance languages like PHP.  
-A trait groups methods that can be inserted into multiple classes without using inheritance.  
-They help avoid duplication when different classes need the same functionality but do not share a common parent.  
-Traits can also define abstract methods that the using class must implement, providing a contract.  
-When a class uses a trait, the trait’s methods become part of that class’s method set.  
+Explanation:
+Prepared statements separate SQL logic from data, which prevents SQL injection attacks by treating user input as literal values rather than executable code. PDO (PHP Data Objects) provides a consistent interface for many database systems and supports named or positional placeholders. When a statement is prepared, the database parses the query once, then you can execute it multiple times with different parameters, improving performance. Binding values allows you to specify data types, ensuring correct handling of integers, strings, and nulls. After execution, you can fetch results using fetch modes that suit your application, such as associative arrays or objects.
 
-Code example with comments:  
-
+Code example (with comments):
 <?php
-// Define a trait that provides logging capabilities
-trait LoggerTrait {
-    // Log a message with a timestamp
-    public function log(string $message): void {
-        $timestamp = date('Y-m-d H:i:s');
-        echo "[{$timestamp}] {$message}\n";
-    }
+// Create a new PDO instance to connect to a MySQL database
+$dsn = 'mysql:host=localhost;dbname=sample_db;charset=utf8mb4';
+$username = 'db_user';
+$password = 'db_pass';
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,   // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC // Fetch rows as associative arrays
+];
+$pdo = new PDO($dsn, $username, $password, $options);
+
+// Define an SQL query with named placeholders for safety
+$sql = 'SELECT id, name, email FROM users WHERE status = :status AND created_at > :date';
+
+// Prepare the statement once
+$stmt = $pdo->prepare($sql);
+
+// Bind values to the placeholders with explicit data types
+$status = 'active';
+$date   = '2023-01-01';
+$stmt->bindValue(':status', $status, PDO::PARAM_STR);
+$stmt->bindValue(':date',   $date,   PDO::PARAM_STR);
+
+// Execute the prepared statement
+$stmt->execute();
+
+// Fetch all matching rows
+$users = $stmt->fetchAll();
+
+// Iterate over results
+foreach ($users as $user) {
+    echo "ID: {$user['id']}, Name: {$user['name']}, Email: {$user['email']}\n";
 }
-
-// First class that uses the LoggerTrait
-class User {
-    use LoggerTrait;               // Insert the trait’s methods into this class
-
-    private $name;
-
-    public function __construct(string $name) {
-        $this->name = $name;
-        $this->log("User '{$this->name}' created.");
-    }
-}
-
-// Second class that also uses the same trait
-class Order {
-    use LoggerTrait;               // Same trait reused here
-
-    private $id;
-
-    public function __construct(int $id) {
-        $this->id = $id;
-        $this->log("Order #{$this->id} initialized.");
-    }
-}
-
-// Demonstration
-$user  = new User('Alice');
-$order = new Order(123);
 ?>
 */
 
 /* Laravel
-Topic: Laravel Queues and Jobs  
+Topic: Laravel Service Container and Dependency Injection
 
-Explanation:  
-Laravel queues allow time‑consuming tasks to be processed in the background, keeping HTTP requests fast and responsive.  
-A job represents a single unit of work that can be dispatched to any configured queue driver (database, Redis, SQS, etc.).  
-When a job is dispatched, Laravel serializes the job class, stores it in the queue, and a worker later unserializes and runs the handle method.  
-You can control the number of attempts, delay before execution, and specify which queue connection or queue name to use.  
-Queue workers are started with an Artisan command and can be supervised to run continuously in production.
+Explanation:
+The Laravel service container is a powerful tool for managing class dependencies and performing automatic resolution. It allows you to bind abstractions (interfaces) to concrete implementations, making your code more testable and decoupled. When a class is type‑hinted in a controller or another class, the container resolves and injects the appropriate instance automatically. You can also bind singleton instances that should be shared across the entire request lifecycle. Using the container promotes the Inversion of Control (IoC) principle, leading to cleaner architecture and easier maintenance.
 
-Code example (Job class and dispatch):
-
+Code example with comments:
 <?php
+namespace App\Providers;
 
-namespace App\Jobs;
+use Illuminate\Support\ServiceProvider;
+use App\Contracts\PaymentGateway;
+use App\Services\StripeGateway;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use App\Models\Order;
-use Mail;
-
-// The job will be placed on the default queue and processed asynchronously
-class SendOrderConfirmation implements ShouldQueue
+class AppServiceProvider extends ServiceProvider
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    protected $orderId;
-
-    // The number of times the job may be attempted.
-    public $tries = 3;
-
-    // Optional delay (in seconds) before the job becomes available.
-    public $delay = 60;
-
-    public function __construct(int $orderId)
+    // Register bindings in the service container
+    public function register()
     {
-        $this->orderId = $orderId;
-    }
-
-    // This method is executed by the queue worker.
-    public function handle()
-    {
-        $order = Order::findOrFail($this->orderId);
-
-        // Example of sending an email; any other heavy work can go here.
-        Mail::to($order->user->email)->send(new \App\Mail\OrderConfirmed($order));
+        // Bind the PaymentGateway interface to the StripeGateway concrete class
+        $this->app->bind(PaymentGateway::class, StripeGateway::class);
     }
 }
 
-// Somewhere in a controller or service, dispatch the job:
-use App\Jobs\SendOrderConfirmation;
+// ---------------------------------------------------------
 
-// After an order is created:
-$order = Order::create($request->all());
+namespace App\Contracts;
 
-// Dispatch the job to the queue; it will run in the background.
-SendOrderConfirmation::dispatch($order->id);   // or dispatch(new SendOrderConfirmation($order->id));
+interface PaymentGateway
+{
+    // Define a contract for processing payments
+    public function charge(float $amount, string $currency);
+}
 
+// ---------------------------------------------------------
+
+namespace App\Services;
+
+use App\Contracts\PaymentGateway;
+
+class StripeGateway implements PaymentGateway
+{
+    // Implementation of the charge method using Stripe's API
+    public function charge(float $amount, string $currency)
+    {
+        // Imagine Stripe SDK call here
+        return "Charged {$amount} {$currency} via Stripe.";
+    }
+}
+
+// ---------------------------------------------------------
+
+namespace App\Http\Controllers;
+
+use App\Contracts\PaymentGateway;
+use Illuminate\Http\Request;
+
+class CheckoutController extends Controller
+{
+    protected $paymentGateway;
+
+    // The service container injects the concrete StripeGateway automatically
+    public function __construct(PaymentGateway $paymentGateway)
+    {
+        $this->paymentGateway = $paymentGateway;
+    }
+
+    public function store(Request $request)
+    {
+        $amount = $request->input('amount');
+        $currency = $request->input('currency', 'USD');
+
+        // Use the injected gateway to process the payment
+        $result = $this->paymentGateway->charge($amount, $currency);
+
+        return response()->json(['message' => $result]);
+    }
+}
 ?>
 */
 
 /* MySQL
-Topic: MySQL Prepared Statements  
+Topic: Common Table Expressions (CTEs) in MySQL
 
-Explanation:  
-Prepared statements let you separate SQL code from the data values that are supplied at execution time. This improves security by preventing SQL injection, because the query structure is fixed before any user input is bound. They also boost performance for repeated executions of the same statement with different parameters, as the server parses and optimizes the query only once. In MySQL you create a prepared statement using PREPARE, assign values with SET or USING, and execute it with EXECUTE. Finally, you release the resources with DEALLOCATE PREPARE.  
+Explanation:
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs are defined using the WITH clause and can improve query readability, especially for complex subqueries or recursive operations.  
+MySQL supports both non‑recursive and recursive CTEs starting from version 8.0.  
+Non‑recursive CTEs are useful for breaking down a query into logical steps without repeating code.  
+Recursive CTEs enable hierarchical data processing, such as traversing parent‑child relationships.  
+CTEs exist only for the duration of the statement that defines them and do not create permanent objects.
 
-Code example (with comments):  
--- Define a variable to hold the SQL statement with placeholders  
-SET @sql = 'INSERT INTO employees (first_name, last_name, salary) VALUES (?, ?, ?)';  
+Code example (non‑recursive CTE with comments):
 
--- Prepare the statement for later execution  
-PREPARE stmt_insert FROM @sql;  
-
--- Set example values for the placeholders  
-SET @first = 'Alice';  
-SET @last = 'Johnson';  
-SET @sal = 72000;  
-
--- Execute the prepared statement, binding the variables to the placeholders  
-EXECUTE stmt_insert USING @first, @last, @sal;  
-
--- Clean up by deallocating the prepared statement  
-DEALLOCATE PREPARE stmt_insert;
+-- Define a CTE named top_sales that selects the top 5 sales records
+WITH top_sales AS (
+    SELECT
+        sales_id,
+        customer_id,
+        amount,
+        sale_date
+    FROM sales
+    ORDER BY amount DESC
+    LIMIT 5
+)
+-- Use the CTE to retrieve detailed customer information for those top sales
+SELECT
+    ts.sales_id,
+    ts.amount,
+    ts.sale_date,
+    c.customer_name,
+    c.email
+FROM top_sales ts
+JOIN customers c ON ts.customer_id = c.customer_id
+ORDER BY ts.amount DESC;
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: Debouncing a Function in JavaScript  
 
-Explanation:
-A closure is a function that retains access to variables from its lexical scope even after that outer function has finished executing.  
-Closures enable data encapsulation, allowing private state that cannot be accessed directly from outside.  
-They are created every time a function is defined, capturing the surrounding environment at that moment.  
-Common use cases include function factories, memoization, and maintaining state in asynchronous callbacks.  
-Understanding closures helps avoid common pitfalls such as unintentionally sharing mutable state between invocations.
+Explanation:  
+- Debouncing limits how often a function can be executed by postponing its call until after a specified wait time has elapsed since the last invocation.  
+- It is especially useful for performance‑critical events such as window resizing, scrolling, or keystroke handling.  
+- The technique prevents the original function from running too frequently, reducing unnecessary calculations and DOM updates.  
+- A debounced function returns a new wrapper that manages a timer; each call resets the timer, and the original function runs only when the timer completes without interruption.  
+- Implementing debounce improves responsiveness and conserves resources in web applications.  
 
-Code Example:
-// A function that creates a counter using a closure
-function createCounter(initialValue) {
-    // `count` is private to the returned function
-    let count = initialValue;
+Code example (with comments):  
 
-    // The inner function forms a closure over `count`
-    return function() {
-        count += 1;            // Modify the captured variable
-        return count;          // Return the updated value
-    };
-}
+function debounce(func, wait) {  
+    // Store the timeout ID between calls  
+    let timeoutId;  
 
-// Create two independent counters
-const counterA = createCounter(0);
-const counterB = createCounter(10);
+    // Return a new function that will be called in place of the original  
+    return function(...args) {  
+        // Capture the context to preserve “this” inside func  
+        const context = this;  
 
-console.log(counterA()); // 1
-console.log(counterA()); // 2
-console.log(counterB()); // 11
-console.log(counterB()); // 12
+        // Clear any existing timer to restart the wait period  
+        clearTimeout(timeoutId);  
 
-// Even though `createCounter` has finished, the inner functions still
-// have access to their own `count` variables because of the closure.
+        // Set a new timer that will invoke func after wait milliseconds  
+        timeoutId = setTimeout(() => {  
+            func.apply(context, args); // Execute the original function with the correct context and arguments  
+        }, wait);  
+    };  
+}  
+
+// Example usage: log the window width after the user stops resizing for 300 ms  
+const handleResize = debounce(() => {  
+    console.log('Window width:', window.innerWidth);  
+}, 300);  
+
+window.addEventListener('resize', handleResize);  
 */
 
 /* AI
-Topic: Prompt Engineering – Controlling LLM Output with Temperature and Stop Tokens  
+Topic: OpenAI Function Calling with GPT‑4 (AI APIs)
 
 Explanation:  
-Prompt engineering is the practice of designing inputs that guide large language models (LLMs) to produce desired responses. By adjusting the temperature parameter you can trade off creativity for determinism: low values (e.g., 0.2) make the model repeat the most likely tokens, while high values (e.g., 0.9) increase randomness. Adding stop tokens tells the model where to halt generation, preventing trailing irrelevant text. Combining these settings with carefully worded prompts yields more reliable and controllable outputs, which is crucial for applications like code generation, summarization, or conversational agents. The example below demonstrates how to set temperature and stop tokens using OpenAI’s API in Python.  
+Function calling lets a language model decide when to invoke external code and pass arguments in JSON format.  
+You define the function signature (name, description, parameters) and send it to the ChatCompletion endpoint.  
+When the model detects a need, it returns a “function_call” object instead of plain text.  
+Your program then runs the requested function, captures its result, and feeds that result back to the model as a “function” role message.  
+This pattern enables safe, structured retrieval of up‑to‑date data (e.g., weather, stock prices) without the model hallucinating facts.
 
-Code example (Python with comments):
-import os
-import openai
+Code example (Python, requires openai ≥ 0.27 and an API key):
 
-# Load your OpenAI API key from environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
+import openai, json  
 
-def generate_completion(prompt, temperature=0.3, max_tokens=150, stop=None):
-    """
-    Calls the OpenAI completion endpoint with custom temperature and stop tokens.
-    Returns the generated text.
-    """
-    response = openai.Completion.create(
-        model="text-davinci-003",   # Choose the appropriate LLM
-        prompt=prompt,              # The user‑crafted prompt
-        temperature=temperature,    # Controls randomness (0.0 = deterministic)
-        max_tokens=max_tokens,      # Limit the length of the response
-        stop=stop                    # List of strings where generation should stop
-    )
-    # Extract the generated text from the API response
-    return response.choices[0].text.strip()
+openai.api_key = "YOUR_API_KEY"  
 
-# Example usage
-my_prompt = "Write a concise Python function that checks if a string is a palindrome."
-# Stop generation after the function definition to avoid extra commentary
-stop_sequences = ["\\n\\n", "# End of function"]
-result = generate_completion(my_prompt, temperature=0.2, stop=stop_sequences)
+def get_weather(city):  
+    # Mock implementation – replace with a real API call if needed  
+    return {"city": city, "temperature": 22, "unit": "C", "description": "Sunny"}  
 
-print("Generated code:")
-print(result)
+# User query  
+messages = [  
+    {"role": "user", "content": "What's the weather in Paris?"}  
+]  
+
+# Describe the function the model may call  
+functions = [  
+    {  
+        "name": "get_weather",  
+        "description": "Retrieve the current weather for a given city",  
+        "parameters": {  
+            "type": "object",  
+            "properties": {  
+                "city": {"type": "string", "description": "Name of the city"}  
+            },  
+            "required": ["city"]  
+        }  
+    }  
+]  
+
+# Ask the model, allowing it to decide whether to call the function  
+response = openai.ChatCompletion.create(  
+    model="gpt-4-0613",  
+    messages=messages,  
+    functions=functions,  
+    function_call="auto"          # let the model choose when to call  
+)  
+
+# If the model wants to call a function, execute it and send the result back  
+if response.choices[0].finish_reason == "function_call":  
+    call = response.choices[0].message["function_call"]  
+    fn_name = call["name"]  
+    args = json.loads(call["arguments"])  
+
+    if fn_name == "get_weather":  
+        result = get_weather(args["city"])  
+
+        # Append the model's function request and the function's response to the conversation  
+        follow_up = openai.ChatCompletion.create(  
+            model="gpt-4-0613",  
+            messages=messages + [  
+                response.choices[0].message,                      # the function call request  
+                {"role": "function", "name": fn_name, "content": json.dumps(result)}  # function output  
+            ]  
+        )  
+
+        # The final answer from the model, now grounded in real data  
+        print(follow_up.choices[0].message["content"])  
+else:  
+    # Model responded directly without needing a function call  
+    print(response.choices[0].message["content"])
 */
 
