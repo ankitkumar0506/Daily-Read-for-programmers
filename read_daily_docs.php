@@ -1,56 +1,56 @@
 <?php
-// 2026-10-27 06:38:21
+// 2026-10-28 07:07:19
 
 /* PHP
-Topic: Using Prepared Statements with PDO for Secure Database Queries
+PHP PDO Prepared Statements
 
 Explanation:
-Prepared statements separate SQL logic from data, which prevents SQL injection attacks by treating user input as literal values rather than executable code. PDO (PHP Data Objects) provides a consistent interface for many database systems and supports named or positional placeholders. When a statement is prepared, the database parses the query once, then you can execute it multiple times with different parameters, improving performance. Binding values allows you to specify data types, ensuring correct handling of integers, strings, and nulls. After execution, you can fetch results using fetch modes that suit your application, such as associative arrays or objects.
+Prepared statements in PDO separate the SQL query structure from the data values, which helps prevent SQL injection attacks. 
+They are compiled once by the database server, so repeated execution with different parameters is more efficient. 
+You bind values to placeholders, either named (e.g., :name) or positional (e.g., ?), before executing the statement. 
+If an error occurs, PDO can throw exceptions, making debugging easier. 
+Using prepared statements also improves code readability and maintainability.
 
-Code example (with comments):
+Code example with comments:
+
 <?php
 // Create a new PDO instance to connect to a MySQL database
-$dsn = 'mysql:host=localhost;dbname=sample_db;charset=utf8mb4';
-$username = 'db_user';
-$password = 'db_pass';
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'dbpass';
 $options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,   // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC // Fetch rows as associative arrays
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch rows as associative arrays
 ];
 $pdo = new PDO($dsn, $username, $password, $options);
 
-// Define an SQL query with named placeholders for safety
-$sql = 'SELECT id, name, email FROM users WHERE status = :status AND created_at > :date';
+// Define the SQL with named placeholders
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
 
-// Prepare the statement once
+// Prepare the statement (SQL is sent to the server for compilation)
 $stmt = $pdo->prepare($sql);
 
-// Bind values to the placeholders with explicit data types
-$status = 'active';
-$date   = '2023-01-01';
-$stmt->bindValue(':status', $status, PDO::PARAM_STR);
-$stmt->bindValue(':date',   $date,   PDO::PARAM_STR);
+// Bind values to the placeholders
+$stmt->bindValue(':username', 'alice', PDO::PARAM_STR);
+$stmt->bindValue(':email', 'alice@example.com', PDO::PARAM_STR);
 
 // Execute the prepared statement
 $stmt->execute();
 
-// Fetch all matching rows
-$users = $stmt->fetchAll();
-
-// Iterate over results
-foreach ($users as $user) {
-    echo "ID: {$user['id']}, Name: {$user['name']}, Email: {$user['email']}\n";
-}
+// Get the ID of the newly inserted row
+$newUserId = $pdo->lastInsertId();
+echo "New user inserted with ID: $newUserId";
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container and Dependency Injection
+Topic: Laravel Service Container and Automatic Dependency Injection
 
-Explanation:
-The Laravel service container is a powerful tool for managing class dependencies and performing automatic resolution. It allows you to bind abstractions (interfaces) to concrete implementations, making your code more testable and decoupled. When a class is type‑hinted in a controller or another class, the container resolves and injects the appropriate instance automatically. You can also bind singleton instances that should be shared across the entire request lifecycle. Using the container promotes the Inversion of Control (IoC) principle, leading to cleaner architecture and easier maintenance.
+Explanation:  
+The Laravel service container is the backbone of the framework’s IoC (Inversion of Control) system. It stores bindings that map abstractions such as interfaces to concrete classes, allowing you to resolve them automatically. When a class or controller type‑hints a dependency in its constructor, the container examines the type hint and injects the appropriate instance. This decouples your code, makes it easier to test, and centralises object creation logic. You can bind singletons, contextual bindings, or use automatic resolution for classes that do not need explicit bindings.
 
-Code example with comments:
+Code example (binding an interface and injecting it into a controller):
+
 <?php
 namespace App\Providers;
 
@@ -60,25 +60,22 @@ use App\Services\StripeGateway;
 
 class AppServiceProvider extends ServiceProvider
 {
-    // Register bindings in the service container
     public function register()
     {
-        // Bind the PaymentGateway interface to the StripeGateway concrete class
-        $this->app->bind(PaymentGateway::class, StripeGateway::class);
+        // Bind the PaymentGateway contract to the StripeGateway concrete class
+        $this->app->bind(PaymentGateway::class, function ($app) {
+            // You could pull configuration values here
+            return new StripeGateway(config('services.stripe.secret'));
+        });
     }
 }
-
-// ---------------------------------------------------------
 
 namespace App\Contracts;
 
 interface PaymentGateway
 {
-    // Define a contract for processing payments
-    public function charge(float $amount, string $currency);
+    public function charge(float $amount, string $currency, array $metadata = []): bool;
 }
-
-// ---------------------------------------------------------
 
 namespace App\Services;
 
@@ -86,190 +83,165 @@ use App\Contracts\PaymentGateway;
 
 class StripeGateway implements PaymentGateway
 {
-    // Implementation of the charge method using Stripe's API
-    public function charge(float $amount, string $currency)
+    protected $secret;
+
+    public function __construct(string $secret)
     {
-        // Imagine Stripe SDK call here
-        return "Charged {$amount} {$currency} via Stripe.";
+        $this->secret = $secret;
+    }
+
+    public function charge(float $amount, string $currency, array $metadata = []): bool
+    {
+        // Here you would call Stripe's API; returning true for illustration
+        // Example: \Stripe\Charge::create([...]);
+        return true;
     }
 }
-
-// ---------------------------------------------------------
 
 namespace App\Http\Controllers;
 
 use App\Contracts\PaymentGateway;
 use Illuminate\Http\Request;
 
-class CheckoutController extends Controller
+class PaymentController extends Controller
 {
-    protected $paymentGateway;
+    protected $gateway;
 
-    // The service container injects the concrete StripeGateway automatically
-    public function __construct(PaymentGateway $paymentGateway)
+    // Laravel automatically injects the concrete implementation bound above
+    public function __construct(PaymentGateway $gateway)
     {
-        $this->paymentGateway = $paymentGateway;
+        $this->gateway = $gateway;
     }
 
     public function store(Request $request)
     {
-        $amount = $request->input('amount');
-        $currency = $request->input('currency', 'USD');
+        $amount   = $request->input('amount');
+        $currency = $request->input('currency');
 
         // Use the injected gateway to process the payment
-        $result = $this->paymentGateway->charge($amount, $currency);
+        $success = $this->gateway->charge($amount, $currency, $request->all());
 
-        return response()->json(['message' => $result]);
+        return $success
+            ? response()->json(['status' => 'charged'])
+            : response()->json(['status' => 'failed'], 422);
     }
 }
 ?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) in MySQL
+Topic: Common Table Expressions (CTEs) and Recursive Queries  
 
-Explanation:
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs are defined using the WITH clause and can improve query readability, especially for complex subqueries or recursive operations.  
-MySQL supports both non‑recursive and recursive CTEs starting from version 8.0.  
-Non‑recursive CTEs are useful for breaking down a query into logical steps without repeating code.  
-Recursive CTEs enable hierarchical data processing, such as traversing parent‑child relationships.  
-CTEs exist only for the duration of the statement that defines them and do not create permanent objects.
+Explanation:  
+- A CTE is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+- Defined using the WITH clause, it improves readability by allowing you to break complex queries into logical parts.  
+- MySQL supports both non‑recursive and recursive CTEs starting from version 8.0.  
+- Recursive CTEs are useful for hierarchical data such as organization charts or tree traversals.  
+- The CTE is scoped to the statement that defines it and disappears after execution.  
 
-Code example (non‑recursive CTE with comments):
-
--- Define a CTE named top_sales that selects the top 5 sales records
-WITH top_sales AS (
-    SELECT
-        sales_id,
-        customer_id,
-        amount,
-        sale_date
-    FROM sales
-    ORDER BY amount DESC
-    LIMIT 5
-)
--- Use the CTE to retrieve detailed customer information for those top sales
-SELECT
-    ts.sales_id,
-    ts.amount,
-    ts.sale_date,
-    c.customer_name,
-    c.email
-FROM top_sales ts
-JOIN customers c ON ts.customer_id = c.customer_id
-ORDER BY ts.amount DESC;
+Code example (with comments):  
+WITH RECURSIVE org_chart AS (  
+    SELECT employee_id, manager_id, employee_name, 1 AS level  
+    FROM employees  
+    WHERE manager_id IS NULL               -- top‑level manager (root)  
+    UNION ALL  
+    SELECT e.employee_id, e.manager_id, e.employee_name, oc.level + 1  
+    FROM employees e  
+    JOIN org_chart oc ON e.manager_id = oc.employee_id   -- walk down the hierarchy  
+)  
+SELECT employee_id, manager_id, employee_name, level  
+FROM org_chart  
+ORDER BY level, manager_id;
 */
 
 /* JavaScript
-Topic: Debouncing a Function in JavaScript  
+Topic: JavaScript Proxies – Intercepting and customizing object behavior  
 
 Explanation:  
-- Debouncing limits how often a function can be executed by postponing its call until after a specified wait time has elapsed since the last invocation.  
-- It is especially useful for performance‑critical events such as window resizing, scrolling, or keystroke handling.  
-- The technique prevents the original function from running too frequently, reducing unnecessary calculations and DOM updates.  
-- A debounced function returns a new wrapper that manages a timer; each call resets the timer, and the original function runs only when the timer completes without interruption.  
-- Implementing debounce improves responsiveness and conserves resources in web applications.  
+A Proxy wraps a target object and allows you to define custom behavior for fundamental operations such as property access, assignment, enumeration, function calls, and more.  
+By providing handler traps, you can validate data, implement lazy loading, create read‑only views, or log interactions without modifying the original object.  
+Proxies are especially useful for creating reactive data structures, enforcing invariants, or building domain‑specific APIs.  
+The trap functions receive the target and relevant arguments, and they must return appropriate values to mimic the default behavior when needed.  
+Because proxies work at the language level, they are transparent to code that interacts with the proxied object, making them a powerful meta‑programming tool.
 
-Code example (with comments):  
+Example:
+const target = { name: "Alice", age: 30 };
 
-function debounce(func, wait) {  
-    // Store the timeout ID between calls  
-    let timeoutId;  
+const handler = {
+  // Intercept property reads
+  get(obj, prop) {
+    console.log(`Getting ${prop}`);
+    return Reflect.get(obj, prop); // default behavior
+  },
 
-    // Return a new function that will be called in place of the original  
-    return function(...args) {  
-        // Capture the context to preserve “this” inside func  
-        const context = this;  
+  // Intercept property writes
+  set(obj, prop, value) {
+    if (prop === "age" && value < 0) {
+      console.error("Age cannot be negative");
+      return false; // reject the assignment
+    }
+    console.log(`Setting ${prop} to ${value}`);
+    return Reflect.set(obj, prop, value); // default behavior
+  }
+};
 
-        // Clear any existing timer to restart the wait period  
-        clearTimeout(timeoutId);  
+const proxiedUser = new Proxy(target, handler);
 
-        // Set a new timer that will invoke func after wait milliseconds  
-        timeoutId = setTimeout(() => {  
-            func.apply(context, args); // Execute the original function with the correct context and arguments  
-        }, wait);  
-    };  
-}  
-
-// Example usage: log the window width after the user stops resizing for 300 ms  
-const handleResize = debounce(() => {  
-    console.log('Window width:', window.innerWidth);  
-}, 300);  
-
-window.addEventListener('resize', handleResize);  
+// Interaction with the proxy
+console.log(proxiedUser.name);   // logs "Getting name" then "Alice"
+proxiedUser.age = 35;            // logs "Setting age to 35"
+proxiedUser.age = -5;            // logs error and does not change the age.
 */
 
 /* AI
-Topic: OpenAI Function Calling with GPT‑4 (AI APIs)
+Topic: Chain‑of‑Thought Prompt Engineering for Large Language Models  
 
 Explanation:  
-Function calling lets a language model decide when to invoke external code and pass arguments in JSON format.  
-You define the function signature (name, description, parameters) and send it to the ChatCompletion endpoint.  
-When the model detects a need, it returns a “function_call” object instead of plain text.  
-Your program then runs the requested function, captures its result, and feeds that result back to the model as a “function” role message.  
-This pattern enables safe, structured retrieval of up‑to‑date data (e.g., weather, stock prices) without the model hallucinating facts.
+Chain‑of‑thought (CoT) prompting adds step‑by‑step reasoning to the input, encouraging the model to break complex problems into intermediate sub‑questions before delivering the final answer. This technique improves performance on arithmetic, logic puzzles, and multi‑hop reasoning tasks without changing the model itself. By explicitly requesting the reasoning process, you guide the model to produce more transparent and often more accurate outputs. The approach works with both chat‑style and completion APIs and can be combined with temperature or top‑p settings to control creativity. Implementing CoT is as simple as formatting the prompt with a few illustrative examples that include the reasoning steps.
 
-Code example (Python, requires openai ≥ 0.27 and an API key):
+Code example (Python, using OpenAI’s ChatCompletion API):
 
-import openai, json  
+import os
+import openai
 
-openai.api_key = "YOUR_API_KEY"  
+# Set your OpenAI API key – replace with your actual key or use an environment variable
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def get_weather(city):  
-    # Mock implementation – replace with a real API call if needed  
-    return {"city": city, "temperature": 22, "unit": "C", "description": "Sunny"}  
+def chain_of_thought(prompt):
+    """
+    Sends a CoT‑styled prompt to the chat model and returns the full response.
+    The prompt includes examples that demonstrate step‑by‑step reasoning.
+    """
+    # Few‑shot examples showing the reasoning pattern
+    cot_examples = """Q: There are 3 boxes. Box A has 5 apples, Box B has 2 apples, and Box C has 7 apples. How many apples are there in total?
+A: Let's think step by step.
+   - Box A: 5 apples
+   - Box B: 2 apples
+   - Box C: 7 apples
+   - Total = 5 + 2 + 7 = 14
+   Therefore, the answer is 14.
 
-# User query  
-messages = [  
-    {"role": "user", "content": "What's the weather in Paris?"}  
-]  
+Q: A train travels 60 miles per hour for 3 hours and then 80 miles per hour for 2 hours. What is the total distance traveled?
+A: Let's think step by step.
+   - First segment: 60 mph × 3 h = 180 miles
+   - Second segment: 80 mph × 2 h = 160 miles
+   - Total distance = 180 + 160 = 340 miles
+   Therefore, the answer is 340.
 
-# Describe the function the model may call  
-functions = [  
-    {  
-        "name": "get_weather",  
-        "description": "Retrieve the current weather for a given city",  
-        "parameters": {  
-            "type": "object",  
-            "properties": {  
-                "city": {"type": "string", "description": "Name of the city"}  
-            },  
-            "required": ["city"]  
-        }  
-    }  
-]  
+Q: """ + prompt + "\nA: Let's think step by step."
 
-# Ask the model, allowing it to decide whether to call the function  
-response = openai.ChatCompletion.create(  
-    model="gpt-4-0613",  
-    messages=messages,  
-    functions=functions,  
-    function_call="auto"          # let the model choose when to call  
-)  
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",               # choose any chat model you have access to
+        messages=[{"role": "user", "content": cot_examples}],
+        temperature=0.2,                   # low temperature for more deterministic reasoning
+        max_tokens=300
+    )
+    # Return only the assistant's content
+    return response.choices[0].message.content.strip()
 
-# If the model wants to call a function, execute it and send the result back  
-if response.choices[0].finish_reason == "function_call":  
-    call = response.choices[0].message["function_call"]  
-    fn_name = call["name"]  
-    args = json.loads(call["arguments"])  
-
-    if fn_name == "get_weather":  
-        result = get_weather(args["city"])  
-
-        # Append the model's function request and the function's response to the conversation  
-        follow_up = openai.ChatCompletion.create(  
-            model="gpt-4-0613",  
-            messages=messages + [  
-                response.choices[0].message,                      # the function call request  
-                {"role": "function", "name": fn_name, "content": json.dumps(result)}  # function output  
-            ]  
-        )  
-
-        # The final answer from the model, now grounded in real data  
-        print(follow_up.choices[0].message["content"])  
-else:  
-    # Model responded directly without needing a function call  
-    print(response.choices[0].message["content"])
+# Example usage
+question = "If a rectangle has width 7 cm and height 9 cm, what is its area?"
+answer = chain_of_thought(question)
+print(answer)
 */
 
