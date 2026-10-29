@@ -1,247 +1,209 @@
 <?php
-// 2026-10-28 07:07:19
+// 2026-10-29 07:28:46
 
 /* PHP
-PHP PDO Prepared Statements
+PHP Topic: Generators (Yield)  
 
-Explanation:
-Prepared statements in PDO separate the SQL query structure from the data values, which helps prevent SQL injection attacks. 
-They are compiled once by the database server, so repeated execution with different parameters is more efficient. 
-You bind values to placeholders, either named (e.g., :name) or positional (e.g., ?), before executing the statement. 
-If an error occurs, PDO can throw exceptions, making debugging easier. 
-Using prepared statements also improves code readability and maintainability.
+Explanation:  
+- Generators allow functions to produce values one at a time without building an entire array in memory.  
+- They are created using the `yield` keyword, which pauses the function’s execution and returns a value.  
+- Each subsequent call to the generator resumes execution right after the last `yield`.  
+- This makes them ideal for processing large data sets, streams, or infinite sequences efficiently.  
+- Generators can also receive values sent back into the function using `$generator->send($value)`.  
 
-Code example with comments:
+Code example (with comments):
 
 <?php
-// Create a new PDO instance to connect to a MySQL database
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$username = 'dbuser';
-$password = 'dbpass';
-$options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch rows as associative arrays
-];
-$pdo = new PDO($dsn, $username, $password, $options);
+// A generator that yields the first $n Fibonacci numbers
+function fibonacciGenerator(int $n): Generator {
+    $a = 0;               // First number in the sequence
+    $b = 1;               // Second number in the sequence
+    for ($i = 0; $i < $n; $i++) {
+        // Yield the current value of $a and pause execution
+        yield $a;
+        // Compute the next Fibonacci number
+        $temp = $a + $b;
+        $a = $b;
+        $b = $temp;
+    }
+}
 
-// Define the SQL with named placeholders
-$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
-
-// Prepare the statement (SQL is sent to the server for compilation)
-$stmt = $pdo->prepare($sql);
-
-// Bind values to the placeholders
-$stmt->bindValue(':username', 'alice', PDO::PARAM_STR);
-$stmt->bindValue(':email', 'alice@example.com', PDO::PARAM_STR);
-
-// Execute the prepared statement
-$stmt->execute();
-
-// Get the ID of the newly inserted row
-$newUserId = $pdo->lastInsertId();
-echo "New user inserted with ID: $newUserId";
+// Use the generator
+foreach (fibonacciGenerator(10) as $index => $value) {
+    // $index is the zero‑based position, $value is the Fibonacci number
+    echo "Fibonacci #{$index}: {$value}\n";
+}
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container and Automatic Dependency Injection
+Topic: Implicit Route Model Binding in Laravel
 
 Explanation:  
-The Laravel service container is the backbone of the framework’s IoC (Inversion of Control) system. It stores bindings that map abstractions such as interfaces to concrete classes, allowing you to resolve them automatically. When a class or controller type‑hints a dependency in its constructor, the container examines the type hint and injects the appropriate instance. This decouples your code, makes it easier to test, and centralises object creation logic. You can bind singletons, contextual bindings, or use automatic resolution for classes that do not need explicit bindings.
+Laravel can automatically inject model instances into your route or controller based on the route parameter name. When the parameter name matches a model's primary key column, Laravel queries the database and provides the fully hydrated model. If no record is found, a 404 response is generated automatically. This feature eliminates the need for manual queries and null checks in most cases. It works for any Eloquent model and can be customized with route key names or custom binding logic.
 
-Code example (binding an interface and injecting it into a controller):
+Code example with comments:
 
 <?php
-namespace App\Providers;
-
-use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;
-use App\Services\StripeGateway;
-
-class AppServiceProvider extends ServiceProvider
-{
-    public function register()
-    {
-        // Bind the PaymentGateway contract to the StripeGateway concrete class
-        $this->app->bind(PaymentGateway::class, function ($app) {
-            // You could pull configuration values here
-            return new StripeGateway(config('services.stripe.secret'));
-        });
-    }
-}
-
-namespace App\Contracts;
-
-interface PaymentGateway
-{
-    public function charge(float $amount, string $currency, array $metadata = []): bool;
-}
-
-namespace App\Services;
-
-use App\Contracts\PaymentGateway;
-
-class StripeGateway implements PaymentGateway
-{
-    protected $secret;
-
-    public function __construct(string $secret)
-    {
-        $this->secret = $secret;
-    }
-
-    public function charge(float $amount, string $currency, array $metadata = []): bool
-    {
-        // Here you would call Stripe's API; returning true for illustration
-        // Example: \Stripe\Charge::create([...]);
-        return true;
-    }
-}
-
 namespace App\Http\Controllers;
 
-use App\Contracts\PaymentGateway;
+use App\Models\Post;               // The Eloquent model we want to bind
 use Illuminate\Http\Request;
 
-class PaymentController extends Controller
+class PostController extends Controller
 {
-    protected $gateway;
-
-    // Laravel automatically injects the concrete implementation bound above
-    public function __construct(PaymentGateway $gateway)
+    // The {post} placeholder will be resolved to a Post model instance
+    public function show(Post $post)
     {
-        $this->gateway = $gateway;
+        // At this point $post is already a retrieved model or a 404 has been thrown
+        return view('posts.show', ['post' => $post]);
     }
 
-    public function store(Request $request)
+    // Updating a post using implicit binding
+    public function update(Request $request, Post $post)
     {
-        $amount   = $request->input('amount');
-        $currency = $request->input('currency');
+        // Validate incoming data
+        $validated = $request->validate([
+            'title'   => 'required|string|max:255',
+            'content' => 'required|string',
+        ]);
 
-        // Use the injected gateway to process the payment
-        $success = $this->gateway->charge($amount, $currency, $request->all());
+        // Fill the model with validated data and save
+        $post->fill($validated);
+        $post->save();
 
-        return $success
-            ? response()->json(['status' => 'charged'])
-            : response()->json(['status' => 'failed'], 422);
+        return redirect()->route('posts.show', $post);
     }
 }
+
+// routes/web.php
+use App\Http\Controllers\PostController;
+
+// The {post} segment triggers implicit binding to the Post model
+Route::get('/posts/{post}', [PostController::class, 'show'])->name('posts.show');
+Route::put('/posts/{post}', [PostController::class, 'update'])->name('posts.update');
+
 ?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) and Recursive Queries  
+Topic: Common Table Expressions (CTE) and Recursive Queries in MySQL
 
 Explanation:  
-- A CTE is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-- Defined using the WITH clause, it improves readability by allowing you to break complex queries into logical parts.  
-- MySQL supports both non‑recursive and recursive CTEs starting from version 8.0.  
-- Recursive CTEs are useful for hierarchical data such as organization charts or tree traversals.  
-- The CTE is scoped to the statement that defines it and disappears after execution.  
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. MySQL supports both non‑recursive and recursive CTEs starting from version 8.0. Recursive CTEs are useful for traversing hierarchical data such as organization charts or category trees. The CTE is defined using the WITH clause and can be referenced like a regular table in the main query. When using recursion, the CTE must contain an anchor member (the base case) and a recursive member that references the CTE itself, combined with UNION ALL.
 
-Code example (with comments):  
-WITH RECURSIVE org_chart AS (  
-    SELECT employee_id, manager_id, employee_name, 1 AS level  
+Code example with comments:  
+
+CREATE TABLE employees (  
+    emp_id INT PRIMARY KEY,  
+    name VARCHAR(50),  
+    manager_id INT NULL   -- References emp_id of the manager; NULL for top‑level executives  
+);  
+
+INSERT INTO employees (emp_id, name, manager_id) VALUES  
+(1, 'Alice', NULL),   -- CEO  
+(2, 'Bob', 1),        -- Reports to Alice  
+(3, 'Carol', 1),      -- Reports to Alice  
+(4, 'Dave', 2),       -- Reports to Bob  
+(5, 'Eve', 2);        -- Reports to Bob  
+
+-- Recursive CTE to retrieve the full reporting hierarchy for a given manager (e.g., Alice with emp_id = 1)  
+WITH RECURSIVE hierarchy AS (  
+    -- Anchor member: start with the manager whose hierarchy we want  
+    SELECT emp_id, name, manager_id, 0 AS level  
     FROM employees  
-    WHERE manager_id IS NULL               -- top‑level manager (root)  
+    WHERE emp_id = 1  
+  
     UNION ALL  
-    SELECT e.employee_id, e.manager_id, e.employee_name, oc.level + 1  
+  
+    -- Recursive member: find employees whose manager_id matches any emp_id already in the hierarchy  
+    SELECT e.emp_id, e.name, e.manager_id, h.level + 1 AS level  
     FROM employees e  
-    JOIN org_chart oc ON e.manager_id = oc.employee_id   -- walk down the hierarchy  
+    INNER JOIN hierarchy h ON e.manager_id = h.emp_id  
 )  
-SELECT employee_id, manager_id, employee_name, level  
-FROM org_chart  
-ORDER BY level, manager_id;
+SELECT emp_id, name, manager_id, level  
+FROM hierarchy  
+ORDER BY level, emp_id;  
+
+-- The result shows each employee under Alice, with the 'level' column indicating depth in the hierarchy.  
 */
 
 /* JavaScript
-Topic: JavaScript Proxies – Intercepting and customizing object behavior  
+Topic: Closures in JavaScript
 
-Explanation:  
-A Proxy wraps a target object and allows you to define custom behavior for fundamental operations such as property access, assignment, enumeration, function calls, and more.  
-By providing handler traps, you can validate data, implement lazy loading, create read‑only views, or log interactions without modifying the original object.  
-Proxies are especially useful for creating reactive data structures, enforcing invariants, or building domain‑specific APIs.  
-The trap functions receive the target and relevant arguments, and they must return appropriate values to mimic the default behavior when needed.  
-Because proxies work at the language level, they are transparent to code that interacts with the proxied object, making them a powerful meta‑programming tool.
+Explanation:
+A closure is created when an inner function accesses variables from its outer (enclosing) function after the outer function has finished executing.  
+Closures allow the inner function to remember the environment in which it was created, preserving access to those variables.  
+They are useful for data privacy, implementing private state, and creating factory functions.  
+Because the outer variables are kept alive by the closure, they are not garbage‑collected until the inner function can no longer be reached.  
+Understanding closures helps avoid common pitfalls such as unintended variable sharing in loops.
 
-Example:
-const target = { name: "Alice", age: 30 };
+Code example with comments:
+// Outer function that defines a private counter variable
+function createCounter(initialValue) {
+    let count = initialValue;            // This variable is private to createCounter
 
-const handler = {
-  // Intercept property reads
-  get(obj, prop) {
-    console.log(`Getting ${prop}`);
-    return Reflect.get(obj, prop); // default behavior
-  },
+    // Inner function forms a closure over 'count'
+    return function increment(step = 1) {
+        count += step;                  // Accesses and updates the private variable
+        return count;                   // Returns the updated count
+    };
+}
 
-  // Intercept property writes
-  set(obj, prop, value) {
-    if (prop === "age" && value < 0) {
-      console.error("Age cannot be negative");
-      return false; // reject the assignment
-    }
-    console.log(`Setting ${prop} to ${value}`);
-    return Reflect.set(obj, prop, value); // default behavior
-  }
-};
+// Use the factory to create independent counters
+const counterA = createCounter(0);
+const counterB = createCounter(10);
 
-const proxiedUser = new Proxy(target, handler);
-
-// Interaction with the proxy
-console.log(proxiedUser.name);   // logs "Getting name" then "Alice"
-proxiedUser.age = 35;            // logs "Setting age to 35"
-proxiedUser.age = -5;            // logs error and does not change the age.
+console.log(counterA()); // 1  (0 + 1)
+console.log(counterA(5)); // 6 (1 + 5)
+console.log(counterB()); // 11 (10 + 1)
+console.log(counterB(2)); // 13 (11 + 2)
 */
 
 /* AI
-Topic: Chain‑of‑Thought Prompt Engineering for Large Language Models  
+Topic: Prompt Engineering for Few‑Shot Learning with the OpenAI GPT API  
 
 Explanation:  
-Chain‑of‑thought (CoT) prompting adds step‑by‑step reasoning to the input, encouraging the model to break complex problems into intermediate sub‑questions before delivering the final answer. This technique improves performance on arithmetic, logic puzzles, and multi‑hop reasoning tasks without changing the model itself. By explicitly requesting the reasoning process, you guide the model to produce more transparent and often more accurate outputs. The approach works with both chat‑style and completion APIs and can be combined with temperature or top‑p settings to control creativity. Implementing CoT is as simple as formatting the prompt with a few illustrative examples that include the reasoning steps.
+Few‑shot prompting lets a language model infer a task from a small set of examples embedded in the prompt. By carefully structuring the examples and the instruction, you can achieve higher accuracy without any fine‑tuning. This approach is especially useful when you have limited labeled data or need rapid prototyping. The prompt should include a clear description, a few input‑output pairs, and a blank line for the model to generate the answer. Adjusting the temperature and max tokens helps control creativity and response length.  
 
-Code example (Python, using OpenAI’s ChatCompletion API):
+Code example (Python, using the openai library):  
 
-import os
-import openai
+import os  
+import openai  
 
-# Set your OpenAI API key – replace with your actual key or use an environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Load your OpenAI API key from an environment variable  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-def chain_of_thought(prompt):
-    """
-    Sends a CoT‑styled prompt to the chat model and returns the full response.
-    The prompt includes examples that demonstrate step‑by‑step reasoning.
-    """
-    # Few‑shot examples showing the reasoning pattern
-    cot_examples = """Q: There are 3 boxes. Box A has 5 apples, Box B has 2 apples, and Box C has 7 apples. How many apples are there in total?
-A: Let's think step by step.
-   - Box A: 5 apples
-   - Box B: 2 apples
-   - Box C: 7 apples
-   - Total = 5 + 2 + 7 = 14
-   Therefore, the answer is 14.
+def classify_sentiment(text):  
+    # Construct a few‑shot prompt with two labeled examples  
+    prompt = (  
+        "Classify the sentiment of the following sentences as Positive, Negative, or Neutral.\n\n"  
+        "Sentence: I loved the new phone I bought!\n"  
+        "Sentiment: Positive\n\n"  
+        "Sentence: The restaurant was noisy and the food was bland.\n"  
+        "Sentiment: Negative\n\n"  
+        f"Sentence: {text}\n"  
+        "Sentiment:"  
+    )  
 
-Q: A train travels 60 miles per hour for 3 hours and then 80 miles per hour for 2 hours. What is the total distance traveled?
-A: Let's think step by step.
-   - First segment: 60 mph × 3 h = 180 miles
-   - Second segment: 80 mph × 2 h = 160 miles
-   - Total distance = 180 + 160 = 340 miles
-   Therefore, the answer is 340.
+    response = openai.Completion.create(  
+        model="gpt-3.5-turbo-instruct",   # model that supports completion style prompts  
+        prompt=prompt,  
+        temperature=0.0,                  # deterministic output for classification  
+        max_tokens=5,                     # only need a short label  
+        top_p=1.0,  
+        frequency_penalty=0.0,  
+        presence_penalty=0.0  
+    )  
 
-Q: """ + prompt + "\nA: Let's think step by step."
+    # The model returns the sentiment label followed by a newline; strip whitespace  
+    sentiment = response.choices[0].text.strip()  
+    return sentiment  
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",               # choose any chat model you have access to
-        messages=[{"role": "user", "content": cot_examples}],
-        temperature=0.2,                   # low temperature for more deterministic reasoning
-        max_tokens=300
-    )
-    # Return only the assistant's content
-    return response.choices[0].message.content.strip()
-
-# Example usage
-question = "If a rectangle has width 7 cm and height 9 cm, what is its area?"
-answer = chain_of_thought(question)
-print(answer)
+# Example usage  
+if __name__ == "__main__":  
+    test_sentence = "The movie was okay, not great but not terrible either."  
+    print(f"Input: {test_sentence}")  
+    print("Predicted Sentiment:", classify_sentiment(test_sentence))  
 */
 
