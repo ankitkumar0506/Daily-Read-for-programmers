@@ -1,57 +1,57 @@
 <?php
-// 2026-11-01 07:50:20
+// 2026-11-02 07:58:03
 
 /* PHP
-Topic: PDO Prepared Statements for Secure Database Access  
+Topic: Using Prepared Statements with PDO for Secure Database Access  
 
 Explanation:  
 Prepared statements separate SQL code from data, preventing SQL injection attacks.  
-The PDO (PHP Data Objects) extension provides a consistent API for different databases.  
-You prepare the statement once, then execute it multiple times with different parameters.  
-Binding values can be done by position or by named placeholders, improving readability.  
-Error handling with exceptions makes debugging easier and keeps the code clean.  
+PDO (PHP Data Objects) provides a uniform API for many database systems, making code portable.  
+You first prepare the SQL query with placeholders, then bind values and execute.  
+The database parses the query once, which can improve performance for repeated executions.  
+Errors can be caught with exceptions, allowing clean error handling.  
 
-Code example:  
-<?php  
-// Enable exceptions for PDO errors  
-$dsn = 'mysql:host=localhost;dbname=example_db;charset=utf8mb4';  
-$options = [  
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,  
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,  
-];  
+Code Example:  
+<?php
+// Create a PDO connection (replace DSN, username, password with real values)
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'dbpass';
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,   // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch rows as associative arrays
+];
+$pdo = new PDO($dsn, $username, $password, $options);
 
-try {  
-    $pdo = new PDO($dsn, 'db_user', 'db_password', $options);  
-} catch (PDOException $e) {  
-    die('Connection failed: ' . $e->getMessage());  
-}  
+// Prepare an INSERT statement with named placeholders
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)';
+$stmt = $pdo->prepare($sql);
 
-// Prepare an INSERT statement with named placeholders  
-$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())";  
-$stmt = $pdo->prepare($sql);  
+// Bind values to the placeholders
+$stmt->bindValue(':username', 'alice', PDO::PARAM_STR);
+$stmt->bindValue(':email', 'alice@example.com', PDO::PARAM_STR);
+$stmt->bindValue(':created_at', date('Y-m-d H:i:s'), PDO::PARAM_STR);
 
-// Sample data to insert  
-$userData = [  
-    'username' => 'jane_doe',  
-    'email'    => 'jane@example.com'  
-];  
+// Execute the statement
+$stmt->execute();
 
-// Execute the prepared statement with the data array  
-$stmt->execute($userData);  
-
-// Verify insertion by fetching the last inserted ID  
-$lastId = $pdo->lastInsertId();  
-echo "New user inserted with ID: " . $lastId;  
+// Retrieve the ID of the newly inserted row
+$newUserId = $pdo->lastInsertId();
+echo "New user inserted with ID: $newUserId";
 ?>
 */
 
 /* Laravel
 Topic: Laravel Queues with Redis
 
-Explanation:  
-Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or making API calls to a background worker. By using Redis as the queue driver, you get a fast, in‑memory data store that can handle high‑throughput job dispatching. Each queued job is represented by a class that implements the ShouldQueue interface and contains a handle method where the actual work is performed. Jobs are dispatched using the dispatch() helper or the static dispatch method on the job class. Workers listen to the Redis queue and process jobs in the order they were added, retrying failed jobs according to your configuration.
+Explanation:
+Laravel queues allow time‑consuming tasks to be processed in the background, keeping HTTP requests fast.  
+Redis is a fast, in‑memory data store that works well as a queue driver because it supports atomic list operations.  
+When a job is dispatched, Laravel pushes a serialized payload onto a Redis list; a worker then pops jobs off the list and executes them.  
+You can run multiple workers to scale processing, and Laravel automatically retries failed jobs based on your configuration.  
+Using queues improves user experience, reduces server load, and enables reliable retry and failure handling.
 
-Code Example (PHP):
+Code example (Job definition and dispatch):
 
 <?php
 namespace App\Jobs;
@@ -61,139 +61,157 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Mail; // example service
 
 class SendWelcomeEmail implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    protected $user; // data that will be serialized with the job
+    protected $userId;   // ID of the user to email
 
-    // Constructor receives any data the job needs
-    public function __construct($user)
+    // Constructor receives data needed for the job
+    public function __construct(int $userId)
     {
-        $this->user = $user;
+        $this->userId = $userId;
     }
 
-    // The logic that runs when the worker processes the job
+    // The job logic runs here
     public function handle()
     {
-        // Example: send an email using a Mailable class
-        Mail::to($this->user->email)->send(new \App\Mail\WelcomeMail($this->user));
+        $user = \App\Models\User::find($this->userId);
+        if ($user) {
+            // Use Laravel's mailer to send the welcome email
+            \Mail::to($user->email)->send(new \App\Mail\WelcomeMail($user));
+        }
     }
 }
 
 // Dispatching the job from a controller or any other place
 use App\Jobs\SendWelcomeEmail;
 
-// $newUser is an instance of the User model that was just created
-SendWelcomeEmail::dispatch($newUser); // pushes the job onto the Redis queue
+// After creating a new user...
+$user = \App\Models\User::create($request->all());
 
-// To start a worker that processes the Redis queue, run the Artisan command:
-// php artisan queue:work redis --tries=3 --timeout=60
-// The worker will keep running, pulling jobs from the 'default' queue and executing their handle() methods.
+// Push the job onto the Redis queue named "default"
+SendWelcomeEmail::dispatch($user->id)
+    ->onQueue('default');   // optional: specify a custom queue name
+
+// To start a worker that processes jobs from Redis, run in terminal:
+// php artisan queue:work redis --queue=default --sleep=3 --tries=3
+
+// Ensure the queue connection is set to redis in config/queue.php:
+// 'default' => env('QUEUE_CONNECTION', 'redis'),
+// 'connections' => [
+//     'redis' => [
+//         'driver' => 'redis',
+//         'connection' => 'default',
+//         'queue' => env('REDIS_QUEUE', 'default'),
+//         'retry_after' => 90,
+//     ],
+// ];
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTE) and Recursive Queries  
+Topic: Common Table Expressions (CTE) and Recursive Queries
 
-Explanation:  
-- A CTE is a named temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-- Defined using the WITH clause, it improves readability by separating complex subqueries from the main query.  
-- Recursive CTEs allow you to perform hierarchical or graph traversals, such as organization charts or bill‑of‑materials.  
-- The recursion has two parts: an anchor member that returns the starting rows, and a recursive member that references the CTE itself.  
-- MySQL limits recursion depth (default 1000) to prevent infinite loops, but you can adjust it with the max_recursive_iterations system variable.  
+Explanation:
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs improve readability by allowing you to break complex queries into logical building blocks.  
+They are defined using the WITH clause and can be recursive, enabling hierarchical data traversal.  
+Recursive CTEs consist of an anchor member (the base case) and a recursive member that references the CTE itself.  
+MySQL 8.0+ fully supports both non‑recursive and recursive CTEs, making it easier to work with tree structures such as organization charts or category hierarchies.  
 
-Code example (creates an employee hierarchy and lists each employee with their manager chain):  
+Code Example (with comments):
+WITH RECURSIVE OrgChart AS (                              -- Define a recursive CTE named OrgChart
+    SELECT 
+        employee_id,                                    -- Base case: select the top‑level manager(s)
+        manager_id,
+        name,
+        1 AS level                                      -- Level 1 for top manager
+    FROM employees
+    WHERE manager_id IS NULL                           -- No manager means top of hierarchy
 
-WITH RECURSIVE emp_path (emp_id, emp_name, manager_id, path) AS (  
-  -- Anchor member: start with top‑level employees (no manager)  
-  SELECT emp_id, emp_name, manager_id, CAST(emp_name AS CHAR(255))  
-  FROM employees  
-  WHERE manager_id IS NULL  
-
-  UNION ALL  
-
-  -- Recursive member: join each employee to its manager's path  
-  SELECT e.emp_id, e.emp_name, e.manager_id, CONCAT(p.path, ' > ', e.emp_name)  
-  FROM employees e  
-  JOIN emp_path p ON e.manager_id = p.emp_id  
-)  
-SELECT emp_id, emp_name, manager_id, path  
-FROM emp_path  
-ORDER BY path;  
+    UNION ALL                                          -- Combine base case with recursive part
+    SELECT 
+        e.employee_id,
+        e.manager_id,
+        e.name,
+        oc.level + 1 AS level                           -- Increment level for each deeper level
+    FROM employees e
+    JOIN OrgChart oc ON e.manager_id = oc.employee_id   -- Recursive join: find subordinates of current level
+)
+SELECT 
+    employee_id,
+    manager_id,
+    name,
+    level
+FROM OrgChart
+ORDER BY level, manager_id;                              -- Result shows the hierarchy ordered by level and manager  
 */
 
 /* JavaScript
-Topic: Closures in JavaScript  
+Topic: Closures in JavaScript
 
 Explanation:  
-A closure is a function that retains access to its lexical scope even when the outer function has finished executing. This allows the inner function to remember and manipulate variables defined in the outer function’s environment. Closures are fundamental for data privacy, function factories, and maintaining state across asynchronous calls. They are created automatically whenever a function references variables from an outer scope. Understanding closures helps avoid common pitfalls such as unintended shared state or memory leaks.
+A closure is a function that retains access to the variables of its outer (lexical) scope even after that outer function has finished executing.  
+It allows you to create private state that cannot be accessed directly from the outside, enabling data encapsulation.  
+The inner function forms a closure over any variables declared in the outer function, preserving their values across calls.  
+Closures are created each time a function is defined, not only when it is invoked, so they are lightweight and ubiquitous.  
+They are heavily used in callbacks, event handlers, and module patterns to maintain context.  
+Mastering closures helps you write more modular, maintainable, and bug‑free JavaScript code.
 
-Code example with comments:  
-function makeCounter() {                // outer function creates a private variable
-    let count = 0;                      // this variable is not accessible from outside
-    return function() {                // inner function forms a closure over 'count'
-        count++;                        // modify the captured variable
-        console.log(count);             // output the current count
+Code example:  
+function createCounter(initialValue) {          // outer function creates a private variable
+    let count = initialValue;                  // this variable is captured by the inner function
+    return function increment(step) {          // inner function forms a closure over 'count'
+        count += step;                         // modifies the private 'count' variable
+        console.log('Current count:', count); // can access and use 'count' each time it's called
     };
-}                                      // end of makeCounter
+}
 
-const counter = makeCounter();         // 'counter' now holds the inner function
-counter(); // 1                         // first call, count becomes 1
-counter(); // 2                         // second call, count becomes 2
+const counterA = createCounter(0);              // counterA has its own private 'count'
+counterA(5);   // Output: Current count: 5
+counterA(3);   // Output: Current count: 8
 
-// Creating a second independent counter demonstrates that each closure has its own scope
-const anotherCounter = makeCounter();  
-anotherCounter(); // 1                  // starts at 1, independent of 'counter'  
+const counterB = createCounter(10);             // counterB has a separate 'count' variable
+counterB(2);   // Output: Current count: 12
+counterB(4);   // Output: Current count: 16
+
+// Even though 'createCounter' has finished execution, the inner functions still
+// have access to their respective 'count' variables because of closures.
 */
 
 /* AI
-Topic: Using OpenAI’s Chat Completion API in Python to Generate Code Snippets  
+Prompt Engineering for Few‑Shot Learning with the OpenAI API  
+This technique embeds a handful of example input‑output pairs directly in the prompt, guiding the model to produce consistent results on new queries.  
+By carefully selecting diverse yet representative examples, you can shape the model’s behavior without changing any model parameters.  
+Few‑shot prompts are especially useful for tasks like data extraction, classification, or formatting where a full fine‑tuning process would be overkill.  
+The approach works across GPT‑3.5, GPT‑4, and newer models, and it can be combined with system messages for additional instruction hierarchy.  
+Performance can be measured by comparing the model’s output on a validation set against expected results, iterating on example selection to improve accuracy.  
 
-Explanation:  
-This topic shows how to call the OpenAI Chat Completion endpoint to ask the model for code examples, such as a function that sorts a list.  
-You set up the API key, create a request payload that includes a system prompt defining the assistant’s role, and a user prompt describing the desired code.  
-The response returns a structured message containing the generated code, which you can extract and use directly in your project.  
-The example demonstrates error handling for network issues and API errors, and prints the generated code to the console.  
-Using the API in this way lets programmers quickly prototype snippets, explore library usage, or get boiler‑plate implementations without leaving their development environment.  
+import os
+import openai
 
-Code example (Python 3, requires the openai package):  
+# Load your OpenAI API key from environment variable
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-import os  
-import openai  
+# Define a few‑shot prompt: system message + two examples + new user query
+prompt = [
+    {"role": "system", "content": "You are an assistant that extracts the date and location from event announcements."},
+    {"role": "user",   "content": "Join us for the Spring Festival on March 21, 2025 at Central Park."},
+    {"role": "assistant", "content": "Date: March 21, 2025\nLocation: Central Park"},
+    {"role": "user",   "content": "Don't miss the Tech Expo happening September 10th, 2024 in the Downtown Convention Center."},
+    {"role": "assistant", "content": "Date: September 10, 2024\nLocation: Downtown Convention Center"},
+    {"role": "user",   "content": "Upcoming webinar: AI Innovations on November 15, 2025, hosted online via Zoom."}
+]
 
-# Load your OpenAI API key from an environment variable for security  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Call the chat completion endpoint
+response = openai.ChatCompletion.create(
+    model="gpt-4o-mini",          # Choose an appropriate model
+    messages=prompt,
+    temperature=0.0               # Low temperature for deterministic extraction
+)
 
-def generate_sort_function(language: str = "python"):  
-    """Ask the model to generate a function that sorts a list in the given language."""  
-    system_prompt = "You are a helpful assistant that provides concise, runnable code examples."  
-    user_prompt = (f"Write a function named sort_list that takes a list of numbers and returns it sorted in ascending order. "
-                   f"Provide the implementation in {language}.")  
-
-    try:  
-        response = openai.ChatCompletion.create(  
-            model="gpt-4o-mini",            # Choose a suitable model for code generation  
-            messages=[  
-                {"role": "system", "content": system_prompt},  
-                {"role": "user", "content": user_prompt}  
-            ],  
-            temperature=0.2,                # Low temperature for more deterministic code  
-            max_tokens=300                  # Limit the length of the generated snippet  
-        )  
-    except openai.error.OpenAIError as e:  
-        print(f"API request failed: {e}")  
-        return None  
-
-    # The generated code is in the 'content' field of the first assistant message  
-    code = response.choices[0].message["content"]  
-    return code  
-
-# Example usage  
-generated_code = generate_sort_function("python")  
-if generated_code:  
-    print("Generated code:\n")  
-    print(generated_code)   # The output includes the function definition ready to copy-paste  
+# Print the model's extracted information
+print(response["choices"][0]["message"]["content"])
 */
 
