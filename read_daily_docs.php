@@ -1,217 +1,229 @@
 <?php
-// 2026-11-02 07:58:03
+// 2026-11-03 08:17:17
 
 /* PHP
-Topic: Using Prepared Statements with PDO for Secure Database Access  
+Topic: Prepared Statements with PDO
 
-Explanation:  
+Explanation:
 Prepared statements separate SQL code from data, preventing SQL injection attacks.  
-PDO (PHP Data Objects) provides a uniform API for many database systems, making code portable.  
+PDO (PHP Data Objects) provides a uniform interface for accessing many databases.  
 You first prepare the SQL query with placeholders, then bind values and execute.  
-The database parses the query once, which can improve performance for repeated executions.  
-Errors can be caught with exceptions, allowing clean error handling.  
+The database parses the query only once, improving performance for repeated executions.  
+Errors can be caught as exceptions, making debugging easier and code more robust.
 
-Code Example:  
+Code example (PHP):
 <?php
-// Create a PDO connection (replace DSN, username, password with real values)
+// Connect to the database using PDO
 $dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
 $username = 'dbuser';
 $password = 'dbpass';
 $options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,   // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch rows as associative arrays
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
 ];
 $pdo = new PDO($dsn, $username, $password, $options);
 
 // Prepare an INSERT statement with named placeholders
-$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)';
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
 $stmt = $pdo->prepare($sql);
 
 // Bind values to the placeholders
-$stmt->bindValue(':username', 'alice', PDO::PARAM_STR);
-$stmt->bindValue(':email', 'alice@example.com', PDO::PARAM_STR);
-$stmt->bindValue(':created_at', date('Y-m-d H:i:s'), PDO::PARAM_STR);
+$username = 'johndoe';
+$email = 'john@example.com';
+$stmt->bindParam(':username', $username, PDO::PARAM_STR);
+$stmt->bindParam(':email', $email, PDO::PARAM_STR);
 
-// Execute the statement
+// Execute the prepared statement
 $stmt->execute();
 
-// Retrieve the ID of the newly inserted row
-$newUserId = $pdo->lastInsertId();
-echo "New user inserted with ID: $newUserId";
+// Check how many rows were inserted
+echo $stmt->rowCount() . ' row(s) inserted.'; // Should output: 1 row(s) inserted.
 ?>
 */
 
 /* Laravel
-Topic: Laravel Queues with Redis
+Topic: Service Container and Dependency Injection  
 
-Explanation:
-Laravel queues allow time‑consuming tasks to be processed in the background, keeping HTTP requests fast.  
-Redis is a fast, in‑memory data store that works well as a queue driver because it supports atomic list operations.  
-When a job is dispatched, Laravel pushes a serialized payload onto a Redis list; a worker then pops jobs off the list and executes them.  
-You can run multiple workers to scale processing, and Laravel automatically retries failed jobs based on your configuration.  
-Using queues improves user experience, reduces server load, and enables reliable retry and failure handling.
+Explanation:  
+The service container is the core of Laravel’s inversion of control (IoC) system, managing class dependencies throughout the application.  
+When a class is type‑hinted in a constructor or method, the container automatically resolves and injects the required objects.  
+By binding an interface to a concrete implementation, you can replace the underlying class without modifying the code that uses it.  
+Contextual bindings let you specify different implementations for the same interface depending on which class is requesting it.  
+Using the container makes your code more testable because you can bind mock implementations during testing.  
+Objects can be resolved manually with the app() helper or automatically by Laravel when they appear in routes, controllers, or jobs.  
 
-Code example (Job definition and dispatch):
+Code example with comments:  
 
 <?php
-namespace App\Jobs;
+namespace App\Contracts;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-
-class SendWelcomeEmail implements ShouldQueue
+interface PaymentGateway
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+    public function charge(float $amount);
+}
+?>  
 
-    protected $userId;   // ID of the user to email
+<?php
+namespace App\Services;
 
-    // Constructor receives data needed for the job
-    public function __construct(int $userId)
+use App\Contracts\PaymentGateway;
+
+class StripeGateway implements PaymentGateway
+{
+    // Charge a given amount using Stripe's API
+    public function charge(float $amount)
     {
-        $this->userId = $userId;
-    }
-
-    // The job logic runs here
-    public function handle()
-    {
-        $user = \App\Models\User::find($this->userId);
-        if ($user) {
-            // Use Laravel's mailer to send the welcome email
-            \Mail::to($user->email)->send(new \App\Mail\WelcomeMail($user));
-        }
+        // Imagine API call here
+        return "Charged $$amount with Stripe.";
     }
 }
+?>  
 
-// Dispatching the job from a controller or any other place
-use App\Jobs\SendWelcomeEmail;
+<?php
+namespace App\Providers;
 
-// After creating a new user...
-$user = \App\Models\User::create($request->all());
+use Illuminate\Support\ServiceProvider;
+use App\Contracts\PaymentGateway;
+use App\Services\StripeGateway;
 
-// Push the job onto the Redis queue named "default"
-SendWelcomeEmail::dispatch($user->id)
-    ->onQueue('default');   // optional: specify a custom queue name
+class AppServiceProvider extends ServiceProvider
+{
+    public function register()
+    {
+        // Bind the interface to the concrete class so the container knows what to inject
+        $this->app->bind(PaymentGateway::class, StripeGateway::class);
+    }
+}
+?>  
 
-// To start a worker that processes jobs from Redis, run in terminal:
-// php artisan queue:work redis --queue=default --sleep=3 --tries=3
+<?php
+namespace App\Http\Controllers;
 
-// Ensure the queue connection is set to redis in config/queue.php:
-// 'default' => env('QUEUE_CONNECTION', 'redis'),
-// 'connections' => [
-//     'redis' => [
-//         'driver' => 'redis',
-//         'connection' => 'default',
-//         'queue' => env('REDIS_QUEUE', 'default'),
-//         'retry_after' => 90,
-//     ],
-// ];
+use App\Contracts\PaymentGateway;
+use Illuminate\Http\Request;
+
+class PaymentController extends Controller
+{
+    protected $gateway;
+
+    // The container injects the concrete implementation of PaymentGateway here
+    public function __construct(PaymentGateway $gateway)
+    {
+        $this->gateway = $gateway;
+    }
+
+    public function charge(Request $request)
+    {
+        $amount = $request->input('amount');
+        // Use the injected gateway to process the payment
+        $result = $this->gateway->charge($amount);
+        return response()->json(['message' => $result]);
+    }
+}
+?>  
+
+<?php
+// Manual resolution using the app() helper (e.g., in a closure route)
+Route::get('/test-charge', function () {
+    // Resolve the bound implementation of PaymentGateway
+    $gateway = app(\App\Contracts\PaymentGateway::class);
+    return $gateway->charge(50.00);
+});
+?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTE) and Recursive Queries
+Topic: MySQL Stored Procedures
 
 Explanation:
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs improve readability by allowing you to break complex queries into logical building blocks.  
-They are defined using the WITH clause and can be recursive, enabling hierarchical data traversal.  
-Recursive CTEs consist of an anchor member (the base case) and a recursive member that references the CTE itself.  
-MySQL 8.0+ fully supports both non‑recursive and recursive CTEs, making it easier to work with tree structures such as organization charts or category hierarchies.  
+Stored procedures are pre‑compiled collections of SQL statements that reside on the MySQL server.  
+They allow you to encapsulate complex business logic, reduce round‑trip traffic, and improve security by limiting direct table access.  
+Procedures can accept input parameters, return output parameters, and use control‑flow statements such as IF, LOOP, and WHILE.  
+Because they are compiled once, repeated executions are faster than sending the same ad‑hoc queries from a client.  
+They also make it easier to maintain code, as changes are made in one place rather than scattered across application layers.
 
-Code Example (with comments):
-WITH RECURSIVE OrgChart AS (                              -- Define a recursive CTE named OrgChart
-    SELECT 
-        employee_id,                                    -- Base case: select the top‑level manager(s)
-        manager_id,
-        name,
-        1 AS level                                      -- Level 1 for top manager
-    FROM employees
-    WHERE manager_id IS NULL                           -- No manager means top of hierarchy
+Code example:
+CREATE PROCEDURE GetCustomerOrders(IN cust_id INT, OUT total_orders INT)
+BEGIN
+    -- Count the number of orders for the given customer
+    SELECT COUNT(*) INTO total_orders
+    FROM orders
+    WHERE customer_id = cust_id;
 
-    UNION ALL                                          -- Combine base case with recursive part
-    SELECT 
-        e.employee_id,
-        e.manager_id,
-        e.name,
-        oc.level + 1 AS level                           -- Increment level for each deeper level
-    FROM employees e
-    JOIN OrgChart oc ON e.manager_id = oc.employee_id   -- Recursive join: find subordinates of current level
-)
-SELECT 
-    employee_id,
-    manager_id,
-    name,
-    level
-FROM OrgChart
-ORDER BY level, manager_id;                              -- Result shows the hierarchy ordered by level and manager  
+    -- If the customer has no orders, set total_orders to zero explicitly
+    IF total_orders IS NULL THEN
+        SET total_orders = 0;
+    END IF;
+END;
+
+-- Call the procedure and retrieve the output value
+SET @order_count = 0;
+CALL GetCustomerOrders(12345, @order_count);
+SELECT @order_count AS NumberOfOrders;
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: JavaScript Closures
 
 Explanation:  
-A closure is a function that retains access to the variables of its outer (lexical) scope even after that outer function has finished executing.  
-It allows you to create private state that cannot be accessed directly from the outside, enabling data encapsulation.  
-The inner function forms a closure over any variables declared in the outer function, preserving their values across calls.  
-Closures are created each time a function is defined, not only when it is invoked, so they are lightweight and ubiquitous.  
-They are heavily used in callbacks, event handlers, and module patterns to maintain context.  
-Mastering closures helps you write more modular, maintainable, and bug‑free JavaScript code.
+A closure is a function that retains access to the variables of its lexical scope even after that outer function has finished executing. This allows the inner function to remember and manipulate private data, creating encapsulation without exposing the variables directly. Closures are created every time a function is defined, and they are essential for patterns like function factories, data privacy, and partial application. Understanding closures helps avoid common pitfalls related to variable mutability and asynchronous callbacks. They are a core concept that enables powerful functional programming techniques in JavaScript.
 
-Code example:  
-function createCounter(initialValue) {          // outer function creates a private variable
-    let count = initialValue;                  // this variable is captured by the inner function
-    return function increment(step) {          // inner function forms a closure over 'count'
-        count += step;                         // modifies the private 'count' variable
-        console.log('Current count:', count); // can access and use 'count' each time it's called
+Code example with comments:
+function createCounter() {
+    // Private variable that will be captured by the closure
+    let count = 0;
+
+    // The inner function forms a closure over 'count'
+    return function increment() {
+        // Modify the captured variable each time the function is called
+        count++;
+        console.log('Current count:', count);
     };
 }
 
-const counterA = createCounter(0);              // counterA has its own private 'count'
-counterA(5);   // Output: Current count: 5
-counterA(3);   // Output: Current count: 8
+// Obtain a counter instance; the outer function has already returned
+const counter = createCounter();
 
-const counterB = createCounter(10);             // counterB has a separate 'count' variable
-counterB(2);   // Output: Current count: 12
-counterB(4);   // Output: Current count: 16
+counter(); // Current count: 1
+counter(); // Current count: 2
+counter(); // Current count: 3
 
-// Even though 'createCounter' has finished execution, the inner functions still
-// have access to their respective 'count' variables because of closures.
+// Each call to createCounter() produces an independent closure with its own 'count'
+const anotherCounter = createCounter();
+anotherCounter(); // Current count: 1   (separate from the first counter)
 */
 
 /* AI
-Prompt Engineering for Few‑Shot Learning with the OpenAI API  
-This technique embeds a handful of example input‑output pairs directly in the prompt, guiding the model to produce consistent results on new queries.  
-By carefully selecting diverse yet representative examples, you can shape the model’s behavior without changing any model parameters.  
-Few‑shot prompts are especially useful for tasks like data extraction, classification, or formatting where a full fine‑tuning process would be overkill.  
-The approach works across GPT‑3.5, GPT‑4, and newer models, and it can be combined with system messages for additional instruction hierarchy.  
-Performance can be measured by comparing the model’s output on a validation set against expected results, iterating on example selection to improve accuracy.  
+Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
 
-import os
-import openai
+Explanation:  
+Few‑shot prompting lets you steer a large language model by providing a small number of example interactions within the same request. Each example pairs a user message with an assistant response, establishing a pattern the model can follow for new inputs. This technique is lightweight compared to fine‑tuning and works well for tasks like formatting, style imitation, or domain‑specific Q&A. By carefully choosing diverse yet concise examples, you can improve consistency and reduce hallucinations. The OpenAI chat API supports this natively: just include a list of message objects that alternate roles.  
 
-# Load your OpenAI API key from environment variable
-openai.api_key = os.getenv("OPENAI_API_KEY")
+Code example (Python, using the openai package):  
 
-# Define a few‑shot prompt: system message + two examples + new user query
-prompt = [
-    {"role": "system", "content": "You are an assistant that extracts the date and location from event announcements."},
-    {"role": "user",   "content": "Join us for the Spring Festival on March 21, 2025 at Central Park."},
-    {"role": "assistant", "content": "Date: March 21, 2025\nLocation: Central Park"},
-    {"role": "user",   "content": "Don't miss the Tech Expo happening September 10th, 2024 in the Downtown Convention Center."},
-    {"role": "assistant", "content": "Date: September 10, 2024\nLocation: Downtown Convention Center"},
-    {"role": "user",   "content": "Upcoming webinar: AI Innovations on November 15, 2025, hosted online via Zoom."}
-]
+import os  
+import openai  
 
-# Call the chat completion endpoint
-response = openai.ChatCompletion.create(
-    model="gpt-4o-mini",          # Choose an appropriate model
-    messages=prompt,
-    temperature=0.0               # Low temperature for deterministic extraction
-)
+# Load your API key from an environment variable for safety  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Print the model's extracted information
-print(response["choices"][0]["message"]["content"])
+# Define a few‑shot prompt with two example exchanges  
+few_shot_messages = [  
+    {"role": "system", "content": "You are a helpful assistant that formats data as CSV."},  
+    {"role": "user", "content": "List the names and ages of Alice (30) and Bob (25)."},  
+    {"role": "assistant", "content": "name,age\nAlice,30\nBob,25"},  
+    {"role": "user", "content": "Provide a CSV of product IDs and prices for items: A100 ($10), B200 ($15)."}  
+]  
+
+# Send the request; the model will infer the CSV format from the examples  
+response = openai.ChatCompletion.create(  
+    model="gpt-4o-mini",  
+    messages=few_shot_messages,  
+    temperature=0.0  
+)  
+
+# Extract and print the assistant’s reply  
+csv_output = response.choices[0].message.content.strip()  
+print(csv_output)  
 */
 
