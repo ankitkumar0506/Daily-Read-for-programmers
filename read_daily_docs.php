@@ -1,229 +1,213 @@
 <?php
-// 2026-11-03 08:17:17
+// 2026-11-04 07:45:52
 
 /* PHP
-Topic: Prepared Statements with PDO
+Topic: PHP Generators (yield)
 
 Explanation:
-Prepared statements separate SQL code from data, preventing SQL injection attacks.  
-PDO (PHP Data Objects) provides a uniform interface for accessing many databases.  
-You first prepare the SQL query with placeholders, then bind values and execute.  
-The database parses the query only once, improving performance for repeated executions.  
-Errors can be caught as exceptions, making debugging easier and code more robust.
+- Generators provide a simple way to implement iterators without the overhead of building a full class.
+- They allow you to produce values one at a time using the `yield` keyword, preserving function state between calls.
+- This is memory‑efficient for large data sets because only one value is kept in memory at a time.
+- Generators can be used in `foreach` loops just like arrays or objects implementing Traversable.
+- They also support sending data back into the generator with `send()` and handling termination with `return`.
 
-Code example (PHP):
+Code example with comments:
 <?php
-// Connect to the database using PDO
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$username = 'dbuser';
-$password = 'dbpass';
-$options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-];
-$pdo = new PDO($dsn, $username, $password, $options);
+// A generator function that yields numbers from 1 to $limit
+function numberRange(int $limit): Generator {
+    for ($i = 1; $i <= $limit; $i++) {
+        // Yield the current number and pause execution
+        yield $i;
+    }
+}
 
-// Prepare an INSERT statement with named placeholders
-$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
-$stmt = $pdo->prepare($sql);
+// Use the generator in a foreach loop
+foreach (numberRange(5) as $num) {
+    // Each iteration receives the next yielded value
+    echo "Number: $num\n";
+}
 
-// Bind values to the placeholders
-$username = 'johndoe';
-$email = 'john@example.com';
-$stmt->bindParam(':username', $username, PDO::PARAM_STR);
-$stmt->bindParam(':email', $email, PDO::PARAM_STR);
+// Demonstrating sending a value back into the generator
+function echoGenerator(): Generator {
+    $value = yield;            // Wait for a value to be sent
+    echo "Received: $value\n"; // Output the received value
+}
 
-// Execute the prepared statement
-$stmt->execute();
-
-// Check how many rows were inserted
-echo $stmt->rowCount() . ' row(s) inserted.'; // Should output: 1 row(s) inserted.
+$gen = echoGenerator();
+$gen->rewind();                // Start the generator, moves to first yield
+$gen->send('Hello World');     // Sends 'Hello World' into the generator
 ?>
 */
 
 /* Laravel
-Topic: Service Container and Dependency Injection  
+Topic: Laravel Custom Validation Rule
 
 Explanation:  
-The service container is the core of Laravel’s inversion of control (IoC) system, managing class dependencies throughout the application.  
-When a class is type‑hinted in a constructor or method, the container automatically resolves and injects the required objects.  
-By binding an interface to a concrete implementation, you can replace the underlying class without modifying the code that uses it.  
-Contextual bindings let you specify different implementations for the same interface depending on which class is requesting it.  
-Using the container makes your code more testable because you can bind mock implementations during testing.  
-Objects can be resolved manually with the app() helper or automatically by Laravel when they appear in routes, controllers, or jobs.  
+A custom validation rule allows you to encapsulate complex validation logic into a reusable class.  
+Implement the Rule contract which requires a passes method to evaluate the value and a message method for the error text.  
+Register the rule directly in a form request or inline when defining validation rules.  
+Custom rules keep controllers thin and promote single‑responsibility principles.  
+They can be used anywhere Laravel’s validator is invoked, including API resources and console commands.
 
-Code example with comments:  
-
+Code example:
 <?php
-namespace App\Contracts;
+namespace App\Rules;
 
-interface PaymentGateway
+use Illuminate\Contracts\Validation\Rule;
+
+class Uppercase implements Rule
 {
-    public function charge(float $amount);
-}
-?>  
-
-<?php
-namespace App\Services;
-
-use App\Contracts\PaymentGateway;
-
-class StripeGateway implements PaymentGateway
-{
-    // Charge a given amount using Stripe's API
-    public function charge(float $amount)
+    // Determine if the validation rule passes.
+    public function passes($attribute, $value)
     {
-        // Imagine API call here
-        return "Charged $$amount with Stripe.";
-    }
-}
-?>  
-
-<?php
-namespace App\Providers;
-
-use Illuminate\Support\ServiceProvider;
-use App\Contracts\PaymentGateway;
-use App\Services\StripeGateway;
-
-class AppServiceProvider extends ServiceProvider
-{
-    public function register()
-    {
-        // Bind the interface to the concrete class so the container knows what to inject
-        $this->app->bind(PaymentGateway::class, StripeGateway::class);
-    }
-}
-?>  
-
-<?php
-namespace App\Http\Controllers;
-
-use App\Contracts\PaymentGateway;
-use Illuminate\Http\Request;
-
-class PaymentController extends Controller
-{
-    protected $gateway;
-
-    // The container injects the concrete implementation of PaymentGateway here
-    public function __construct(PaymentGateway $gateway)
-    {
-        $this->gateway = $gateway;
+        // The value must be entirely uppercase.
+        return strtoupper($value) === $value;
     }
 
-    public function charge(Request $request)
+    // Get the validation error message.
+    public function message()
     {
-        $amount = $request->input('amount');
-        // Use the injected gateway to process the payment
-        $result = $this->gateway->charge($amount);
-        return response()->json(['message' => $result]);
+        // :attribute will be replaced with the actual field name.
+        return 'The :attribute must be uppercase.';
     }
 }
-?>  
 
-<?php
-// Manual resolution using the app() helper (e.g., in a closure route)
-Route::get('/test-charge', function () {
-    // Resolve the bound implementation of PaymentGateway
-    $gateway = app(\App\Contracts\PaymentGateway::class);
-    return $gateway->charge(50.00);
-});
-?>
+// Usage in a Form Request or controller:
+use App\Rules\Uppercase;
+
+$validated = $request->validate([
+    'title' => ['required', 'string', new Uppercase], // title must be all caps
+    // other fields...
+]);
+
+// If validation fails, Laravel automatically returns an error response
+// containing the message defined in the Uppercase rule.
 */
 
 /* MySQL
-Topic: MySQL Stored Procedures
+Topic: Common Table Expressions (CTEs) and Recursive Queries in MySQL  
 
-Explanation:
-Stored procedures are pre‑compiled collections of SQL statements that reside on the MySQL server.  
-They allow you to encapsulate complex business logic, reduce round‑trip traffic, and improve security by limiting direct table access.  
-Procedures can accept input parameters, return output parameters, and use control‑flow statements such as IF, LOOP, and WHILE.  
-Because they are compiled once, repeated executions are faster than sending the same ad‑hoc queries from a client.  
-They also make it easier to maintain code, as changes are made in one place rather than scattered across application layers.
+Explanation:  
+- A CTE is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+- Defined using the WITH clause, it improves readability by separating complex subqueries from the main query.  
+- MySQL 8.0+ supports both non‑recursive and recursive CTEs, enabling hierarchical data processing.  
+- Recursive CTEs repeatedly execute the CTE definition until a termination condition is met, which is useful for traversing trees such as organizational charts or category hierarchies.  
+- They are evaluated once per statement, so they can be referenced multiple times without re‑computing the underlying logic.  
 
-Code example:
-CREATE PROCEDURE GetCustomerOrders(IN cust_id INT, OUT total_orders INT)
-BEGIN
-    -- Count the number of orders for the given customer
-    SELECT COUNT(*) INTO total_orders
-    FROM orders
-    WHERE customer_id = cust_id;
+Code example (with inline comments):  
 
-    -- If the customer has no orders, set total_orders to zero explicitly
-    IF total_orders IS NULL THEN
-        SET total_orders = 0;
-    END IF;
-END;
+-- Create a simple table to store an employee hierarchy  
+CREATE TABLE employees (  
+    emp_id INT PRIMARY KEY,  
+    emp_name VARCHAR(50) NOT NULL,  
+    manager_id INT NULL   -- references emp_id of the manager; NULL for top‑level boss  
+);  
 
--- Call the procedure and retrieve the output value
-SET @order_count = 0;
-CALL GetCustomerOrders(12345, @order_count);
-SELECT @order_count AS NumberOfOrders;
+-- Insert sample data  
+INSERT INTO employees (emp_id, emp_name, manager_id) VALUES  
+(1, 'Alice', NULL),   -- CEO  
+(2, 'Bob', 1),        -- reports to Alice  
+(3, 'Carol', 1),      -- reports to Alice  
+(4, 'Dave', 2),       -- reports to Bob  
+(5, 'Eve', 2),        -- reports to Bob  
+(6, 'Frank', 3);      -- reports to Carol  
+
+-- Recursive CTE to list each employee with their hierarchy level and path from the CEO  
+WITH RECURSIVE emp_hierarchy AS (  
+    -- Anchor member: start with top‑level employees (no manager)  
+    SELECT  
+        emp_id,  
+        emp_name,  
+        manager_id,  
+        1 AS level,                     -- level 1 = top of hierarchy  
+        CAST(emp_name AS CHAR(200)) AS path   -- initial path contains only the employee name  
+    FROM employees  
+    WHERE manager_id IS NULL  
+  
+    UNION ALL  
+  
+    -- Recursive member: join each employee to its manager's row from the previous iteration  
+    SELECT  
+        e.emp_id,  
+        e.emp_name,  
+        e.manager_id,  
+        eh.level + 1 AS level,  
+        CONCAT(eh.path, ' -> ', e.emp_name) AS path   -- build the path string  
+    FROM employees e  
+    INNER JOIN emp_hierarchy eh ON e.manager_id = eh.emp_id  
+)  
+SELECT emp_id, emp_name, manager_id, level, path  
+FROM emp_hierarchy  
+ORDER BY level, emp_id;   -- result shows hierarchy depth and full reporting chain  
 */
 
 /* JavaScript
-Topic: JavaScript Closures
+Topic: JavaScript Closures  
 
 Explanation:  
-A closure is a function that retains access to the variables of its lexical scope even after that outer function has finished executing. This allows the inner function to remember and manipulate private data, creating encapsulation without exposing the variables directly. Closures are created every time a function is defined, and they are essential for patterns like function factories, data privacy, and partial application. Understanding closures helps avoid common pitfalls related to variable mutability and asynchronous callbacks. They are a core concept that enables powerful functional programming techniques in JavaScript.
+A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing. This allows the inner function to preserve state across multiple invocations without using global variables. Closures are created every time a function is defined, and they capture the lexical environment at that moment. They are fundamental for patterns like data encapsulation, function factories, and partial application. Understanding closures helps you write more modular and memory‑efficient code.
 
-Code example with comments:
-function createCounter() {
-    // Private variable that will be captured by the closure
-    let count = 0;
+Code example with comments:  
+function makeCounter() {  
+    let count = 0; // private variable that lives in the outer scope  
+    return function() { // inner function forms a closure over count  
+        count++; // modify the captured variable  
+        return count; // return the updated value  
+    };  
+}  
 
-    // The inner function forms a closure over 'count'
-    return function increment() {
-        // Modify the captured variable each time the function is called
-        count++;
-        console.log('Current count:', count);
-    };
-}
+const counter = makeCounter(); // create a new closure instance  
+console.log(counter()); // 1  
+console.log(counter()); // 2  
+console.log(counter()); // 3  
 
-// Obtain a counter instance; the outer function has already returned
-const counter = createCounter();
-
-counter(); // Current count: 1
-counter(); // Current count: 2
-counter(); // Current count: 3
-
-// Each call to createCounter() produces an independent closure with its own 'count'
-const anotherCounter = createCounter();
-anotherCounter(); // Current count: 1   (separate from the first counter)
+// Each call to makeCounter() would produce an independent counter because a new closure is created.
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
+Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API
 
 Explanation:  
-Few‑shot prompting lets you steer a large language model by providing a small number of example interactions within the same request. Each example pairs a user message with an assistant response, establishing a pattern the model can follow for new inputs. This technique is lightweight compared to fine‑tuning and works well for tasks like formatting, style imitation, or domain‑specific Q&A. By carefully choosing diverse yet concise examples, you can improve consistency and reduce hallucinations. The OpenAI chat API supports this natively: just include a list of message objects that alternate roles.  
+Few‑shot prompting supplies a small set of example interactions within the prompt to guide the model’s behavior without fine‑tuning.  
+By formatting the examples as a dialogue, the model can infer the desired pattern and apply it to new inputs.  
+This technique is especially useful for tasks like text classification, data extraction, or generating structured responses.  
+Choosing clear, representative examples and keeping the total token count within limits are key to success.  
+The approach works across models that accept the chat format (gpt‑3.5‑turbo, gpt‑4, etc.).
 
-Code example (Python, using the openai package):  
+Python code example (requires the openai package and an API key set in the environment):
 
-import os  
-import openai  
+import os
+import openai
 
-# Load your API key from an environment variable for safety  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Load API key from environment variable OPENAI_API_KEY
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Define a few‑shot prompt with two example exchanges  
-few_shot_messages = [  
-    {"role": "system", "content": "You are a helpful assistant that formats data as CSV."},  
-    {"role": "user", "content": "List the names and ages of Alice (30) and Bob (25)."},  
-    {"role": "assistant", "content": "name,age\nAlice,30\nBob,25"},  
-    {"role": "user", "content": "Provide a CSV of product IDs and prices for items: A100 ($10), B200 ($15)."}  
-]  
+def classify_sentiment(user_input):
+    # Define a few‑shot prompt with two labeled examples
+    messages = [
+        {"role": "system", "content": "You are a helpful assistant that classifies the sentiment of a sentence as Positive, Negative, or Neutral."},
+        {"role": "user", "content": "I love the new design of this app!"},
+        {"role": "assistant", "content": "Positive"},
+        {"role": "user", "content": "The update broke all my shortcuts."},
+        {"role": "assistant", "content": "Negative"},
+        # New query to classify
+        {"role": "user", "content": user_input}
+    ]
 
-# Send the request; the model will infer the CSV format from the examples  
-response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",  
-    messages=few_shot_messages,  
-    temperature=0.0  
-)  
+    # Call the chat completion endpoint
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=messages,
+        temperature=0  # deterministic output
+    )
+    # Extract the model's reply (the sentiment label)
+    sentiment = response.choices[0].message.content.strip()
+    return sentiment
 
-# Extract and print the assistant’s reply  
-csv_output = response.choices[0].message.content.strip()  
-print(csv_output)  
+# Example usage
+if __name__ == "__main__":
+    test_sentence = "The tutorial was okay, not great but useful."
+    print(f"Sentence: {test_sentence}")
+    print(f"Sentiment: {classify_sentiment(test_sentence)}")
 */
 
