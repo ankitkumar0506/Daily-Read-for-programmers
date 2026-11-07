@@ -1,226 +1,247 @@
 <?php
-// 2026-11-06 08:18:06
+// 2026-11-07 07:31:52
 
 /* PHP
-Topic: PDO Prepared Statements for Secure Database Queries
+Topic: PHP Generators
 
 Explanation:
-Prepared statements separate SQL code from data, preventing malicious input from altering the query structure.  
-Using PDO (PHP Data Objects) ensures a consistent interface across different database systems.  
-Placeholders are used in the SQL, and actual values are bound later, which also improves performance for repeated queries.  
-If an error occurs, PDO can throw exceptions, making debugging easier.  
-This method protects against SQL injection and promotes clean, maintainable code.  
+Generators allow a function to yield values one at a time instead of building a full array in memory.  
+When the function encounters the `yield` keyword, execution pauses and the yielded value is returned to the caller.  
+On the next iteration the function resumes right after the `yield`, preserving its local state.  
+This makes it ideal for processing large data sets, streams, or infinite sequences with low memory overhead.  
+Generators are created using a normal function declaration with one or more `yield` statements inside.
 
-Code Example:
-// Connect to the database using PDO
-$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
-$username = 'dbuser';
-$password = 'dbpass';
-$options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,   // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-];
+Code example (with comments):
 
-try {
-    $pdo = new PDO($dsn, $username, $password, $options);
-} catch (PDOException $e) {
-    die('Connection failed: ' . $e->getMessage());
+function getNumbers($limit) {
+    // Loop from 1 up to the specified limit
+    for ($i = 1; $i <= $limit; $i++) {
+        // Yield the current number and pause execution
+        yield $i;
+        // Execution will resume here on the next iteration
+    }
 }
 
-// Prepare an INSERT statement with named placeholders
-$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())";
-$stmt = $pdo->prepare($sql);
+// Using the generator
+$generator = getNumbers(5);   // Creates a generator object, no numbers are produced yet
 
-// Bind values to the placeholders
-$stmt->bindValue(':username', $newUsername, PDO::PARAM_STR);
-$stmt->bindValue(':email', $newEmail, PDO::PARAM_STR);
-
-// Execute the statement
-if ($stmt->execute()) {
-    echo "New user added with ID: " . $pdo->lastInsertId();
-} else {
-    echo "Failed to add new user.";
+foreach ($generator as $number) {
+    // Each iteration pulls the next yielded value
+    echo "Number: $number\n";
 }
+
+// Output:
+// Number: 1
+// Number: 2
+// Number: 3
+// Number: 4
+// Number: 5
 */
 
 /* Laravel
-Topic: Laravel Eloquent Polymorphic Relationships
+Topic: Laravel Service Container and Dependency Injection
 
-Explanation:  
-Polymorphic relationships allow a model to belong to more than one other model on a single association. This is useful when different models share a common relationship, such as comments that can belong to posts, videos, or articles. Laravel handles the underlying foreign key and type columns automatically, simplifying queries across the related models. You define a morphTo method on the child model and a morphMany or morphOne on each parent model. The database tables need a nullable id column (e.g., commentable_id) and a string column for the type (e.g., commentable_type).
+Explanation:
+The Laravel service container is a powerful tool that manages class dependencies and performs automatic injection. It resolves objects by reading type hints in constructors or method signatures, allowing you to obtain fully built instances without manual new statements. By binding interfaces to concrete classes, you can swap implementations easily, which promotes a clean, testable architecture. The container also supports contextual binding, singleton bindings, and deferred service providers. Understanding and using the container effectively reduces boilerplate and decouples your code.
 
-Code example (PHP with inline comments):
+Code example (PHP):
 
 <?php
-// In the Comment model
-class Comment extends Model
+namespace App\Http\Controllers;
+
+use App\Contracts\PaymentGateway;          // Interface
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+
+// The controller receives a concrete implementation of PaymentGateway automatically.
+class CheckoutController extends Controller
 {
-    // This tells Laravel that Comment can belong to any model that is "commentable"
-    public function commentable()
+    protected $paymentGateway;
+
+    // Laravel injects the appropriate implementation here.
+    public function __construct(PaymentGateway $paymentGateway)
     {
-        return $this->morphTo(); // resolves to the parent model based on commentable_type and commentable_id
+        $this->paymentGateway = $paymentGateway;
+    }
+
+    // Example action that uses the injected service.
+    public function store(Request $request)
+    {
+        $amount = $request->input('amount');
+
+        // The payment gateway handles the transaction.
+        $result = $this->paymentGateway->charge($amount);
+
+        if ($result->successful()) {
+            return response()->json(['status' => 'Payment successful']);
+        }
+
+        return response()->json(['status' => 'Payment failed'], 422);
     }
 }
 
-// In the Post model
-class Post extends Model
+// In a service provider you bind the interface to a concrete class.
+namespace App\Providers;
+
+use App\Contracts\PaymentGateway;
+use App\Services\StripePaymentGateway;
+use Illuminate\Support\ServiceProvider;
+
+class AppServiceProvider extends ServiceProvider
 {
-    // A Post can have many comments, using the same polymorphic table
-    public function comments()
+    public function register()
     {
-        return $this->morphMany(Comment::class, 'commentable'); // 'commentable' is the base name of the relation
+        // Bind the interface to the Stripe implementation as a singleton.
+        $this->app->singleton(PaymentGateway::class, function ($app) {
+            return new StripePaymentGateway(config('services.stripe.secret'));
+        });
     }
 }
 
-// In the Video model
-class Video extends Model
+// The concrete implementation.
+namespace App\Services;
+
+use App\Contracts\PaymentGateway;
+
+class StripePaymentGateway implements PaymentGateway
 {
-    public function comments()
+    protected $apiKey;
+
+    public function __construct($apiKey)
     {
-        return $this->morphMany(Comment::class, 'commentable');
+        $this->apiKey = $apiKey;
+    }
+
+    // Example method required by the interface.
+    public function charge($amount)
+    {
+        // Here you would call Stripe's SDK; this is a placeholder.
+        return (object) ['successful' => true];
     }
 }
 
-// Example usage in a controller or tinker
-$post = Post::find(1);
-$post->comments()->create(['body' => 'Great post!']); // automatically sets commentable_type = 'App\Models\Post' and commentable_id = 1
+// Interface definition.
+namespace App\Contracts;
 
-$video = Video::find(5);
-$comment = new Comment(['body' => 'Nice video!']);
-$video->comments()->save($comment); // same automatic handling for type and id
-
-// Retrieving the parent of a comment
-$comment = Comment::find(10);
-$parent = $comment->commentable; // returns the Post or Video instance that owns the comment
+interface PaymentGateway
+{
+    public function charge($amount);
+}
 ?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTE) and Recursive Queries
+Topic: Recursive Common Table Expressions (CTEs) in MySQL
 
-Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It is defined using the WITH clause and can improve readability by breaking complex queries into logical building blocks. MySQL 8.0+ also supports recursive CTEs, which allow you to traverse hierarchical data such as organizational charts or bill‑of‑materials structures. Recursive CTEs consist of an anchor member (the starting rows) and a recursive member that repeatedly references the CTE itself until a termination condition is met. They are evaluated row‑by‑row, making them suitable for generating sequences, path enumerations, or performing graph traversals.
+Explanation:
+Recursive CTEs allow you to query hierarchical or tree‑structured data without needing stored procedures.  
+They consist of an anchor query (the starting rows) and a recursive member that references the CTE itself.  
+Each iteration adds a new level to the result set until the recursive member returns no rows.  
+MySQL supports recursive CTEs from version 8.0 onward, enabling tasks such as building an employee‑manager chain or traversing category trees.  
+Be sure to include the optional MAXRECURSION hint or a LIMIT clause to prevent infinite loops.
 
-Code Example (calculating a simple employee hierarchy):
--- Define a recursive CTE named org_chart
-WITH RECURSIVE org_chart AS (
-    -- Anchor member: select top‑level manager(s)
-    SELECT 
+Code example (employee hierarchy):
+-- Anchor part: select top‑level managers (no manager_id)
+WITH RECURSIVE emp_hierarchy AS (
+    SELECT
         employee_id,
-        manager_id,
         employee_name,
+        manager_id,
         1 AS level
     FROM employees
     WHERE manager_id IS NULL
 
     UNION ALL
 
-    -- Recursive member: join each employee to their manager
-    SELECT 
+    -- Recursive part: join employees to their manager from the previous level
+    SELECT
         e.employee_id,
-        e.manager_id,
         e.employee_name,
-        oc.level + 1 AS level
+        e.manager_id,
+        eh.level + 1
     FROM employees e
-    INNER JOIN org_chart oc ON e.manager_id = oc.employee_id
+    INNER JOIN emp_hierarchy eh ON e.manager_id = eh.employee_id
+    WHERE eh.level < 10   -- safety limit to avoid endless recursion
 )
--- Query the hierarchical result
-SELECT 
+SELECT
     employee_id,
-    manager_id,
     employee_name,
+    manager_id,
     level
-FROM org_chart
-ORDER BY level, manager_id;
+FROM emp_hierarchy
+ORDER BY level, manager_id;   -- shows the hierarchy from top to bottom.
 */
 
 /* JavaScript
-Topic: Closures in JavaScript  
+Topic: The JavaScript Event Loop and Microtasks
 
-Explanation:  
-A closure is a function that retains access to the variables of its lexical scope even after that outer function has finished executing. This allows inner functions to remember and manipulate data from the surrounding environment, enabling patterns like data privacy and function factories. Closures are created automatically whenever a function is defined inside another function. They are fundamental for asynchronous programming, module patterns, and creating partially applied functions. Understanding closures helps avoid common pitfalls such as unintentionally sharing mutable state across invocations.
+Explanation:
+The event loop is the mechanism that allows JavaScript to perform non‑blocking operations despite being single‑threaded.  
+When the call stack is empty, the event loop checks the task queue for macrotasks (e.g., setTimeout, I/O callbacks).  
+Microtasks, such as Promise callbacks and queueMicrotask, have higher priority and are drained before the next macrotask.  
+Understanding the order in which macrotasks and microtasks run is crucial for writing predictable asynchronous code.  
+Misplaced microtasks can lead to subtle bugs, especially when mixing async/await with timers or DOM events.  
 
-Code Example:  
-// A simple counter factory using a closure  
-function createCounter(initialValue) {  
-    let count = initialValue; // 'count' is private to the closure  
+Code example (with comments):
+function log(message) {
+    console.log(message);
+}
 
-    // The inner function forms a closure over 'count'  
-    return function() {  
-        count += 1;               // It can read and modify 'count'  
-        return count;            // Returns the updated count  
-    };  
-}  
+log('Start');                     // 1. Synchronous log
 
-// Create two independent counters  
-const counterA = createCounter(0);  
-const counterB = createCounter(10);  
+setTimeout(() => {
+    log('Macrotask: setTimeout'); // 5. Runs after all microtasks are processed
+}, 0);
 
-console.log(counterA()); // 1  
-console.log(counterA()); // 2  
-console.log(counterB()); // 11  
-console.log(counterB()); // 12  
+Promise.resolve().then(() => {
+    log('Microtask: first then'); // 3. Microtasks run before the next macrotask
+    return Promise.resolve();
+}).then(() => {
+    log('Microtask: second then'); // 4. Chained microtask, also before the macrotask
+});
 
-// The private 'count' variable cannot be accessed directly  
-// console.log(counterA.count); // undefined – encapsulation achieved through the closure.
+log('End');                       // 2. Synchronous log, completes before any async callbacks
+
+// Expected console order:
+// Start
+// End
+// Microtask: first then
+// Microtask: second then
+// Macrotask: setTimeout
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering for Large Language Models  
+Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
 
 Explanation:  
-Few‑shot prompting supplies a language model with a small number of example input‑output pairs directly in the prompt, guiding the model toward the desired format and reasoning style.  
-It works without fine‑tuning, making it fast to iterate and adaptable to many tasks such as classification, translation, or code generation.  
-The key is to choose clear, representative examples and to separate them consistently from the new query.  
-Careful ordering and the use of delimiters (e.g., "---") help the model distinguish examples from the actual request.  
-Performance often improves when examples cover edge cases and the prompt ends with an explicit instruction for the model to respond.  
+Few‑shot prompting supplies the model with a handful of example input‑output pairs before the actual user query, guiding it toward the desired format and style. By placing clear demonstrations in the system or user messages, the model can infer the task without needing extensive fine‑tuning. This technique works well for classification, data extraction, and code generation where a consistent output schema is required. The examples should be concise, representative, and separated from the real request to avoid confusion. Adjust the temperature to 0 for deterministic results when the task is deterministic.
 
-Code example (Python, OpenAI API) with comments:  
+Code example (Python, using openai library)  
 
-import os  
 import openai  
 
-# Set your API key (ensure it is stored securely)  
-openai.api_key = os.getenv("OPENAI_API_KEY")  
+# Your OpenAI API key – set as an environment variable or replace here  
+openai.api_key = "sk-YOUR_API_KEY"  
 
-# Define a few‑shot prompt for converting natural language to SQL  
-prompt = """\
-Convert the following natural‑language request into a SQL query.  
+# Define a few‑shot prompt: two examples of extracting email addresses from text  
+messages = [  
+    { "role": "system", "content": "You are an assistant that extracts email addresses from a given paragraph and returns them as a JSON list." },  
+    { "role": "user", "content": "Paragraph: \"Contact us at support@example.com or sales@company.org for assistance.\"" },  
+    { "role": "assistant", "content": "{\"emails\": [\"support@example.com\", \"sales@company.org\"]}" },  
+    { "role": "user", "content": "Paragraph: \"Reach out to jane.doe@xyz.com for more info.\"" },  
+    { "role": "assistant", "content": "{\"emails\": [\"jane.doe@xyz.com\"]}" },  
+    # Real query – no answer yet, model should follow the pattern above  
+    { "role": "user", "content": "Paragraph: \"Our team can be reached at dev@tech.io, info@tech.io, and admin@tech.io.\"" }  
+]  
 
-Example 1:  
-Question: List the names of employees hired after 2020.  
-SQL: SELECT name FROM employees WHERE hire_date > '2020-12-31';  
+response = openai.ChatCompletion.create(  
+    model="gpt-4o-mini",        # or any ChatCompletion model you have access to  
+    messages=messages,  
+    temperature=0,               # deterministic output for extraction tasks  
+    max_tokens=150  
+)  
 
-Example 2:  
-Question: How many orders were placed in January?  
-SQL: SELECT COUNT(*) FROM orders WHERE MONTH(order_date) = 1;  
-
----  
-
-Question: {user_question}  
-SQL:"""
-
-def generate_sql(user_question: str) -> str:  
-    # Insert the user's question into the prompt template  
-    filled_prompt = prompt.format(user_question=user_question)  
-
-    # Call the chat completion endpoint with a system message that sets the role  
-    response = openai.ChatCompletion.create(  
-        model="gpt-4o-mini",  
-        messages=[  
-            {"role": "system", "content": "You are a helpful assistant that translates English to SQL."},  
-            {"role": "user", "content": filled_prompt}  
-        ],  
-        temperature=0.0,          # deterministic output for code generation  
-        max_tokens=150,  
-    )  
-
-    # Extract the generated SQL from the assistant's reply  
-    sql = response.choices[0].message.content.strip()  
-    return sql  
-
-# Example usage  
-question = "Show the total revenue for each product category in 2023."  
-print(generate_sql(question))  
+# Print the model's JSON‑formatted answer  
+print(response.choices[0].message.content)  
 */
 
