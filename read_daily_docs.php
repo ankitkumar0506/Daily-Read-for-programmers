@@ -1,104 +1,112 @@
 <?php
-// 2026-11-07 07:31:52
+// 2026-11-08 07:46:06
 
 /* PHP
-Topic: PHP Generators
+Topic: Prepared Statements with PDO
 
 Explanation:
-Generators allow a function to yield values one at a time instead of building a full array in memory.  
-When the function encounters the `yield` keyword, execution pauses and the yielded value is returned to the caller.  
-On the next iteration the function resumes right after the `yield`, preserving its local state.  
-This makes it ideal for processing large data sets, streams, or infinite sequences with low memory overhead.  
-Generators are created using a normal function declaration with one or more `yield` statements inside.
+Prepared statements are a secure way to execute SQL queries that include user‑supplied data. By separating the query structure from its parameters, PDO prevents SQL injection attacks. The statement is compiled once by the database server, then executed multiple times with different values. This approach also improves performance for repeated queries. PDO supports named and positional placeholders, making the code clear and maintainable.
 
-Code example (with comments):
+Code example with comments:
+<?php
+// Create a new PDO instance (replace DSN, username, and password with real values)
+$dsn = 'mysql:host=localhost;dbname=example_db;charset=utf8mb4';
+$username = 'db_user';
+$password = 'db_pass';
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC // Fetch results as associative arrays
+];
+$pdo = new PDO($dsn, $username, $password, $options);
 
-function getNumbers($limit) {
-    // Loop from 1 up to the specified limit
-    for ($i = 1; $i <= $limit; $i++) {
-        // Yield the current number and pause execution
-        yield $i;
-        // Execution will resume here on the next iteration
-    }
+// Define an SQL query with named placeholders
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)';
+
+// Prepare the statement (the query is sent to the server for compilation)
+$stmt = $pdo->prepare($sql);
+
+// Bind values to the placeholders
+$stmt->bindValue(':username',  $userName, PDO::PARAM_STR);
+$stmt->bindValue(':email',     $userEmail, PDO::PARAM_STR);
+$stmt->bindValue(':created_at', date('Y-m-d H:i:s'), PDO::PARAM_STR);
+
+// Execute the prepared statement
+$stmt->execute();
+
+// To fetch data using a prepared SELECT statement
+$selectSql = 'SELECT id, username, email FROM users WHERE email = :email';
+$selectStmt = $pdo->prepare($selectSql);
+$selectStmt->execute([':email' => $userEmail]); // Pass parameters as an array
+$user = $selectStmt->fetch(); // Retrieve the matching row
+
+// Output the fetched data (for demonstration purposes)
+if ($user) {
+    echo 'User ID: ' . $user['id'] . PHP_EOL;
+    echo 'Username: ' . $user['username'] . PHP_EOL;
+    echo 'Email: ' . $user['email'] . PHP_EOL;
+} else {
+    echo 'No user found with that email.' . PHP_EOL;
 }
-
-// Using the generator
-$generator = getNumbers(5);   // Creates a generator object, no numbers are produced yet
-
-foreach ($generator as $number) {
-    // Each iteration pulls the next yielded value
-    echo "Number: $number\n";
-}
-
-// Output:
-// Number: 1
-// Number: 2
-// Number: 3
-// Number: 4
-// Number: 5
+?>
 */
 
 /* Laravel
-Topic: Laravel Service Container and Dependency Injection
+Topic: Laravel Service Container and Automatic Dependency Injection  
 
-Explanation:
-The Laravel service container is a powerful tool that manages class dependencies and performs automatic injection. It resolves objects by reading type hints in constructors or method signatures, allowing you to obtain fully built instances without manual new statements. By binding interfaces to concrete classes, you can swap implementations easily, which promotes a clean, testable architecture. The container also supports contextual binding, singleton bindings, and deferred service providers. Understanding and using the container effectively reduces boilerplate and decouples your code.
+Explanation:  
+The Laravel service container is a powerful tool that manages class dependencies and performs dependency injection automatically. When you type‑hint a class in a controller constructor or method, the container resolves the required instance, handling any nested dependencies as well. This promotes loose coupling and makes testing easier because concrete implementations can be swapped via bindings. You can bind interfaces to concrete classes in service providers, allowing the container to inject the appropriate implementation wherever needed. The container also supports contextual bindings, singleton bindings, and deferred service loading for optimized performance.
 
-Code example (PHP):
+Code Example (a controller using automatic injection and a binding in a service provider):
 
 <?php
 namespace App\Http\Controllers;
 
-use App\Contracts\PaymentGateway;          // Interface
+use App\Contracts\PaymentGateway;
 use App\Http\Controllers\Controller;
-use Illuminate\Http\Request;
 
-// The controller receives a concrete implementation of PaymentGateway automatically.
-class CheckoutController extends Controller
+class OrderController extends Controller
 {
     protected $paymentGateway;
 
-    // Laravel injects the appropriate implementation here.
+    // The container will inject the concrete class bound to PaymentGateway
     public function __construct(PaymentGateway $paymentGateway)
     {
         $this->paymentGateway = $paymentGateway;
     }
 
-    // Example action that uses the injected service.
-    public function store(Request $request)
+    public function store()
     {
-        $amount = $request->input('amount');
-
-        // The payment gateway handles the transaction.
-        $result = $this->paymentGateway->charge($amount);
-
-        if ($result->successful()) {
-            return response()->json(['status' => 'Payment successful']);
-        }
-
-        return response()->json(['status' => 'Payment failed'], 422);
+        // Use the injected payment gateway to process a payment
+        $this->paymentGateway->charge(1500, 'USD');
+        return response()->json(['status' => 'payment processed']);
     }
 }
 
-// In a service provider you bind the interface to a concrete class.
+// -------------------------------------------------
 namespace App\Providers;
 
+use Illuminate\Support\ServiceProvider;
 use App\Contracts\PaymentGateway;
 use App\Services\StripePaymentGateway;
-use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
     public function register()
     {
-        // Bind the interface to the Stripe implementation as a singleton.
-        $this->app->singleton(PaymentGateway::class, function ($app) {
+        // Bind the interface to a concrete implementation
+        $this->app->bind(PaymentGateway::class, function ($app) {
+            // You could read config values to decide which gateway to use
             return new StripePaymentGateway(config('services.stripe.secret'));
         });
     }
+
+    public function boot()
+    {
+        //
+    }
 }
 
-// The concrete implementation.
+// -------------------------------------------------
 namespace App\Services;
 
 use App\Contracts\PaymentGateway;
@@ -107,141 +115,173 @@ class StripePaymentGateway implements PaymentGateway
 {
     protected $apiKey;
 
-    public function __construct($apiKey)
+    public function __construct(string $apiKey)
     {
-        $this->apiKey = $apiKey;
+        $this->apiKey = $apiKey; // Store the secret key for Stripe API calls
     }
 
-    // Example method required by the interface.
-    public function charge($amount)
+    public function charge(int $amount, string $currency)
     {
-        // Here you would call Stripe's SDK; this is a placeholder.
-        return (object) ['successful' => true];
+        // Here you would interact with Stripe's SDK to create a charge
+        // This is a placeholder to illustrate the method implementation
+        echo "Charging {$amount} {$currency} using Stripe with key {$this->apiKey}";
     }
 }
 
-// Interface definition.
+// -------------------------------------------------
 namespace App\Contracts;
 
 interface PaymentGateway
 {
-    public function charge($amount);
+    // Define the contract that all payment gateways must implement
+    public function charge(int $amount, string $currency);
 }
-?>
 */
 
 /* MySQL
-Topic: Recursive Common Table Expressions (CTEs) in MySQL
+Topic: MySQL Common Table Expressions (CTE) and Recursive Queries
 
 Explanation:
-Recursive CTEs allow you to query hierarchical or tree‑structured data without needing stored procedures.  
-They consist of an anchor query (the starting rows) and a recursive member that references the CTE itself.  
-Each iteration adds a new level to the result set until the recursive member returns no rows.  
-MySQL supports recursive CTEs from version 8.0 onward, enabling tasks such as building an employee‑manager chain or traversing category trees.  
-Be sure to include the optional MAXRECURSION hint or a LIMIT clause to prevent infinite loops.
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs are defined using the WITH clause and improve readability by allowing you to break complex queries into logical building blocks.  
+Recursive CTEs enable you to perform hierarchical or tree‑like traversals, such as processing an employee‑manager relationship or generating a calendar.  
+The CTE is scoped to the statement that defines it, so it does not persist beyond that query execution.  
+You can reference the same CTE multiple times within the main query, which avoids repeating subqueries and can improve performance.
 
-Code example (employee hierarchy):
--- Anchor part: select top‑level managers (no manager_id)
-WITH RECURSIVE emp_hierarchy AS (
+Code example with comments:
+
+-- Create a sample table to hold an employee hierarchy
+CREATE TABLE employees (
+    emp_id   INT PRIMARY KEY,
+    emp_name VARCHAR(50),
+    manager_id INT NULL   -- NULL indicates top‑level manager
+);
+
+-- Insert sample data
+INSERT INTO employees (emp_id, emp_name, manager_id) VALUES
+(1, 'Alice', NULL),   -- CEO
+(2, 'Bob',   1),
+(3, 'Carol', 1),
+(4, 'Dave',  2),
+(5, 'Eve',   2),
+(6, 'Frank', 4);
+
+-- Recursive CTE to list each employee with their chain of managers
+WITH RECURSIVE hierarchy AS (
+    -- Anchor member: start with top‑level managers (no manager_id)
     SELECT
-        employee_id,
-        employee_name,
+        emp_id,
+        emp_name,
         manager_id,
+        CAST(emp_name AS CHAR(200)) AS path,
         1 AS level
     FROM employees
     WHERE manager_id IS NULL
 
     UNION ALL
 
-    -- Recursive part: join employees to their manager from the previous level
+    -- Recursive member: join employees to their direct reports
     SELECT
-        e.employee_id,
-        e.employee_name,
+        e.emp_id,
+        e.emp_name,
         e.manager_id,
-        eh.level + 1
+        CONCAT(h.path, ' -> ', e.emp_name) AS path,
+        h.level + 1
     FROM employees e
-    INNER JOIN emp_hierarchy eh ON e.manager_id = eh.employee_id
-    WHERE eh.level < 10   -- safety limit to avoid endless recursion
+    JOIN hierarchy h ON e.manager_id = h.emp_id
 )
 SELECT
-    employee_id,
-    employee_name,
+    emp_id,
+    emp_name,
     manager_id,
+    path,
     level
-FROM emp_hierarchy
-ORDER BY level, manager_id;   -- shows the hierarchy from top to bottom.
+FROM hierarchy
+ORDER BY path;
+
+-- The result shows each employee, their manager chain (path), and depth level in the hierarchy.
 */
 
 /* JavaScript
-Topic: The JavaScript Event Loop and Microtasks
+Topic: Closures in JavaScript  
 
-Explanation:
-The event loop is the mechanism that allows JavaScript to perform non‑blocking operations despite being single‑threaded.  
-When the call stack is empty, the event loop checks the task queue for macrotasks (e.g., setTimeout, I/O callbacks).  
-Microtasks, such as Promise callbacks and queueMicrotask, have higher priority and are drained before the next macrotask.  
-Understanding the order in which macrotasks and microtasks run is crucial for writing predictable asynchronous code.  
-Misplaced microtasks can lead to subtle bugs, especially when mixing async/await with timers or DOM events.  
+Explanation:  
+A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing. Closures enable data privacy, allowing you to expose only the functionality you want while keeping internal state hidden. They are created every time a function is defined, capturing the surrounding lexical environment at that moment. Common uses include function factories, module patterns, and maintaining state in asynchronous callbacks. Understanding closures is essential for mastering scope, callbacks, and functional programming techniques in JavaScript.  
 
-Code example (with comments):
-function log(message) {
-    console.log(message);
-}
+Code example:  
+function createCounter(initialValue) {  
+    // This variable is local to createCounter but will be captured by the inner function  
+    let count = initialValue;  
 
-log('Start');                     // 1. Synchronous log
+    // The returned function forms a closure over `count`  
+    return function () {  
+        // Each call updates and returns the private `count` variable  
+        count += 1;  
+        return count;  
+    };  
+}  
 
-setTimeout(() => {
-    log('Macrotask: setTimeout'); // 5. Runs after all microtasks are processed
-}, 0);
+// Create two independent counters  
+const counterA = createCounter(0);  
+const counterB = createCounter(10);  
 
-Promise.resolve().then(() => {
-    log('Microtask: first then'); // 3. Microtasks run before the next macrotask
-    return Promise.resolve();
-}).then(() => {
-    log('Microtask: second then'); // 4. Chained microtask, also before the macrotask
-});
+console.log(counterA()); // 1  
+console.log(counterA()); // 2  
+console.log(counterB()); // 11  
+console.log(counterB()); // 12  
 
-log('End');                       // 2. Synchronous log, completes before any async callbacks
-
-// Expected console order:
-// Start
-// End
-// Microtask: first then
-// Microtask: second then
-// Macrotask: setTimeout
+// The internal `count` variables are not directly accessible from outside  
+// Attempting to read `count` would result in ReferenceError.  
 */
 
 /* AI
 Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
 
 Explanation:  
-Few‑shot prompting supplies the model with a handful of example input‑output pairs before the actual user query, guiding it toward the desired format and style. By placing clear demonstrations in the system or user messages, the model can infer the task without needing extensive fine‑tuning. This technique works well for classification, data extraction, and code generation where a consistent output schema is required. The examples should be concise, representative, and separated from the real request to avoid confusion. Adjust the temperature to 0 for deterministic results when the task is deterministic.
+Few‑shot prompting supplies a model with a handful of example input‑output pairs inside the same request, teaching it the desired format without fine‑tuning. This technique works well for tasks like classification, data extraction, or code generation where a clear pattern can be demonstrated. By structuring the messages as a system prompt followed by user‑assistant example exchanges, the model learns to replicate the behavior for new inputs. The approach is lightweight, requires only API calls, and can be adapted on the fly for different domains. It also reduces the need for large labeled datasets, making rapid prototyping possible.
 
-Code example (Python, using openai library)  
+Code example (Python, using the openai library):
+import os
+import openai
 
-import openai  
+# Load your OpenAI API key from the environment
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Your OpenAI API key – set as an environment variable or replace here  
-openai.api_key = "sk-YOUR_API_KEY"  
+def classify_sentiment(text):
+    """
+    Uses a few‑shot prompt to classify sentiment as Positive, Negative, or Neutral.
+    """
+    # Define the system message that sets the overall role
+    system_msg = {"role": "system", "content": "You are a helpful assistant that classifies sentiment of short English sentences."}
+    
+    # Provide two example interactions (few‑shot)
+    examples = [
+        {"role": "user", "content": "I love the new design of this app!"},
+        {"role": "assistant", "content": "Positive"},
+        {"role": "user", "content": "The service was disappointing and slow."},
+        {"role": "assistant", "content": "Negative"}
+    ]
+    
+    # Append the actual user query
+    user_msg = {"role": "user", "content": text}
+    
+    # Build the full message list
+    messages = [system_msg] + examples + [user_msg]
+    
+    # Call the Chat Completion endpoint
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",   # lightweight model suitable for this task
+        messages=messages,
+        temperature=0.0        # deterministic output for classification
+    )
+    
+    # Extract and return the assistant's answer
+    return response.choices[0].message.content.strip()
 
-# Define a few‑shot prompt: two examples of extracting email addresses from text  
-messages = [  
-    { "role": "system", "content": "You are an assistant that extracts email addresses from a given paragraph and returns them as a JSON list." },  
-    { "role": "user", "content": "Paragraph: \"Contact us at support@example.com or sales@company.org for assistance.\"" },  
-    { "role": "assistant", "content": "{\"emails\": [\"support@example.com\", \"sales@company.org\"]}" },  
-    { "role": "user", "content": "Paragraph: \"Reach out to jane.doe@xyz.com for more info.\"" },  
-    { "role": "assistant", "content": "{\"emails\": [\"jane.doe@xyz.com\"]}" },  
-    # Real query – no answer yet, model should follow the pattern above  
-    { "role": "user", "content": "Paragraph: \"Our team can be reached at dev@tech.io, info@tech.io, and admin@tech.io.\"" }  
-]  
-
-response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",        # or any ChatCompletion model you have access to  
-    messages=messages,  
-    temperature=0,               # deterministic output for extraction tasks  
-    max_tokens=150  
-)  
-
-# Print the model's JSON‑formatted answer  
-print(response.choices[0].message.content)  
+# Example usage
+if __name__ == "__main__":
+    test_sentence = "The movie was okay, nothing special."
+    sentiment = classify_sentiment(test_sentence)
+    print(f"Input: {test_sentence}\nPredicted Sentiment: {sentiment}")
 */
 
