@@ -1,287 +1,258 @@
 <?php
-// 2026-11-08 07:46:06
+// 2026-11-09 08:26:06
 
 /* PHP
-Topic: Prepared Statements with PDO
+Topic: PDO Prepared Statements  
 
-Explanation:
-Prepared statements are a secure way to execute SQL queries that include user‑supplied data. By separating the query structure from its parameters, PDO prevents SQL injection attacks. The statement is compiled once by the database server, then executed multiple times with different values. This approach also improves performance for repeated queries. PDO supports named and positional placeholders, making the code clear and maintainable.
+Explanation:  
+PDO (PHP Data Objects) provides a consistent interface for accessing databases in PHP.  
+Prepared statements separate the SQL code from the data, which prevents SQL injection attacks.  
+They allow the database engine to compile the query once and execute it multiple times with different parameters, improving performance.  
+Placeholders in the SQL are bound to PHP variables, and the driver takes care of proper quoting and escaping.  
+Using PDO also makes it easy to switch between different database systems with minimal code changes.  
 
-Code example with comments:
+Code example with comments:  
+
 <?php
-// Create a new PDO instance (replace DSN, username, and password with real values)
-$dsn = 'mysql:host=localhost;dbname=example_db;charset=utf8mb4';
-$username = 'db_user';
-$password = 'db_pass';
+// Create a new PDO instance to connect to a MySQL database
+$dsn = 'mysql:host=localhost;dbname=testdb;charset=utf8mb4';
+$username = 'dbuser';
+$password = 'dbpass';
 $options = [
     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, // Throw exceptions on errors
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC // Fetch results as associative arrays
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, // Fetch results as associative arrays
 ];
-$pdo = new PDO($dsn, $username, $password, $options);
 
-// Define an SQL query with named placeholders
-$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)';
+try {
+    $pdo = new PDO($dsn, $username, $password, $options);
+} catch (PDOException $e) {
+    die('Connection failed: ' . $e->getMessage());
+}
 
-// Prepare the statement (the query is sent to the server for compilation)
+// Prepare an INSERT statement with named placeholders
+$sql = 'INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())';
 $stmt = $pdo->prepare($sql);
 
 // Bind values to the placeholders
-$stmt->bindValue(':username',  $userName, PDO::PARAM_STR);
-$stmt->bindValue(':email',     $userEmail, PDO::PARAM_STR);
-$stmt->bindValue(':created_at', date('Y-m-d H:i:s'), PDO::PARAM_STR);
+$username = 'alice';
+$email = 'alice@example.com';
+$stmt->bindParam(':username', $username, PDO::PARAM_STR);
+$stmt->bindParam(':email', $email, PDO::PARAM_STR);
 
 // Execute the prepared statement
 $stmt->execute();
 
-// To fetch data using a prepared SELECT statement
-$selectSql = 'SELECT id, username, email FROM users WHERE email = :email';
-$selectStmt = $pdo->prepare($selectSql);
-$selectStmt->execute([':email' => $userEmail]); // Pass parameters as an array
-$user = $selectStmt->fetch(); // Retrieve the matching row
+// Get the ID of the newly inserted row
+$newUserId = $pdo->lastInsertId();
+echo "New user inserted with ID: $newUserId\n";
 
-// Output the fetched data (for demonstration purposes)
-if ($user) {
-    echo 'User ID: ' . $user['id'] . PHP_EOL;
-    echo 'Username: ' . $user['username'] . PHP_EOL;
-    echo 'Email: ' . $user['email'] . PHP_EOL;
-} else {
-    echo 'No user found with that email.' . PHP_EOL;
+// Example of a SELECT with positional placeholders
+$sqlSelect = 'SELECT id, username, email FROM users WHERE id > ?';
+$stmtSelect = $pdo->prepare($sqlSelect);
+$minId = 0;
+$stmtSelect->execute([$minId]);
+
+// Fetch and display the results
+while ($row = $stmtSelect->fetch()) {
+    echo "ID: {$row['id']}, Username: {$row['username']}, Email: {$row['email']}\n";
 }
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container and Automatic Dependency Injection  
+Laravel Service Container & Dependency Injection
 
-Explanation:  
-The Laravel service container is a powerful tool that manages class dependencies and performs dependency injection automatically. When you type‑hint a class in a controller constructor or method, the container resolves the required instance, handling any nested dependencies as well. This promotes loose coupling and makes testing easier because concrete implementations can be swapped via bindings. You can bind interfaces to concrete classes in service providers, allowing the container to inject the appropriate implementation wherever needed. The container also supports contextual bindings, singleton bindings, and deferred service loading for optimized performance.
-
-Code Example (a controller using automatic injection and a binding in a service provider):
+The Laravel service container is a powerful tool that manages class dependencies and performs dependency injection automatically. It resolves objects by reading type hints in constructors or method signatures, allowing you to decouple code and adhere to the inversion of control principle. You can bind interfaces to concrete implementations, customize the resolution process, and even create contextual bindings for specific scenarios. This mechanism simplifies testing, as you can easily swap implementations with mock objects. Understanding the container is essential for building modular, maintainable Laravel applications.
 
 <?php
-namespace App\Http\Controllers;
+// App/Contracts/PaymentGateway.php
+namespace App\Contracts;
+
+interface PaymentGateway
+{
+    public function charge(float $amount);
+}
+
+// App/Services/StripeGateway.php
+namespace App\Services;
 
 use App\Contracts\PaymentGateway;
-use App\Http\Controllers\Controller;
 
-class OrderController extends Controller
+class StripeGateway implements PaymentGateway
 {
-    protected $paymentGateway;
-
-    // The container will inject the concrete class bound to PaymentGateway
-    public function __construct(PaymentGateway $paymentGateway)
+    public function charge(float $amount)
     {
-        $this->paymentGateway = $paymentGateway;
-    }
-
-    public function store()
-    {
-        // Use the injected payment gateway to process a payment
-        $this->paymentGateway->charge(1500, 'USD');
-        return response()->json(['status' => 'payment processed']);
+        // Simulate a Stripe charge
+        return "Charged \${$amount} using Stripe.";
     }
 }
 
-// -------------------------------------------------
+// App/Providers/AppServiceProvider.php
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
 use App\Contracts\PaymentGateway;
-use App\Services\StripePaymentGateway;
+use App\Services\StripeGateway;
 
 class AppServiceProvider extends ServiceProvider
 {
     public function register()
     {
-        // Bind the interface to a concrete implementation
-        $this->app->bind(PaymentGateway::class, function ($app) {
-            // You could read config values to decide which gateway to use
-            return new StripePaymentGateway(config('services.stripe.secret'));
-        });
-    }
-
-    public function boot()
-    {
-        //
+        // Bind the interface to a concrete class
+        $this->app->bind(PaymentGateway::class, StripeGateway::class);
     }
 }
 
-// -------------------------------------------------
-namespace App\Services;
+// App/Http/Controllers/OrderController.php
+namespace App\Http\Controllers;
 
 use App\Contracts\PaymentGateway;
+use Illuminate\Http\Request;
 
-class StripePaymentGateway implements PaymentGateway
+class OrderController extends Controller
 {
-    protected $apiKey;
+    protected $paymentGateway;
 
-    public function __construct(string $apiKey)
+    // The service container injects the bound implementation automatically
+    public function __construct(PaymentGateway $paymentGateway)
     {
-        $this->apiKey = $apiKey; // Store the secret key for Stripe API calls
+        $this->paymentGateway = $paymentGateway;
     }
 
-    public function charge(int $amount, string $currency)
+    public function store(Request $request)
     {
-        // Here you would interact with Stripe's SDK to create a charge
-        // This is a placeholder to illustrate the method implementation
-        echo "Charging {$amount} {$currency} using Stripe with key {$this->apiKey}";
+        $amount = $request->input('total');
+        // Use the injected payment gateway to process payment
+        $result = $this->paymentGateway->charge($amount);
+
+        return response()->json(['message' => $result]);
     }
 }
-
-// -------------------------------------------------
-namespace App\Contracts;
-
-interface PaymentGateway
-{
-    // Define the contract that all payment gateways must implement
-    public function charge(int $amount, string $currency);
-}
+?>
 */
 
 /* MySQL
-Topic: MySQL Common Table Expressions (CTE) and Recursive Queries
+Topic: Common Table Expressions (CTEs) and Recursive Queries
 
-Explanation:
+Explanation:  
 A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs are defined using the WITH clause and improve readability by allowing you to break complex queries into logical building blocks.  
-Recursive CTEs enable you to perform hierarchical or tree‑like traversals, such as processing an employee‑manager relationship or generating a calendar.  
-The CTE is scoped to the statement that defines it, so it does not persist beyond that query execution.  
-You can reference the same CTE multiple times within the main query, which avoids repeating subqueries and can improve performance.
+CTEs are defined using the WITH clause and can improve query readability by separating complex logic from the main query.  
+Recursive CTEs allow you to query hierarchical or graph‑structured data, such as organizational charts or bill‑of‑materials.  
+The recursion is achieved by having the CTE reference itself, with an anchor member that provides the starting rows and a recursive member that builds upon them.  
+MySQL 8.0 and later support both non‑recursive and recursive CTEs, making it easier to write self‑joins for tree traversal without deep nesting.
 
-Code example with comments:
+Code example with comments:  
 
--- Create a sample table to hold an employee hierarchy
-CREATE TABLE employees (
-    emp_id   INT PRIMARY KEY,
-    emp_name VARCHAR(50),
-    manager_id INT NULL   -- NULL indicates top‑level manager
-);
+-- Sample table representing an employee hierarchy  
+CREATE TABLE employees (  
+    emp_id INT PRIMARY KEY,  
+    emp_name VARCHAR(50),  
+    manager_id INT NULL   -- references emp_id of the manager; NULL for top‑level boss  
+);  
 
--- Insert sample data
-INSERT INTO employees (emp_id, emp_name, manager_id) VALUES
-(1, 'Alice', NULL),   -- CEO
-(2, 'Bob',   1),
-(3, 'Carol', 1),
-(4, 'Dave',  2),
-(5, 'Eve',   2),
-(6, 'Frank', 4);
+INSERT INTO employees (emp_id, emp_name, manager_id) VALUES  
+(1, 'Alice', NULL),      -- CEO  
+(2, 'Bob', 1),           -- reports to Alice  
+(3, 'Carol', 1),         -- reports to Alice  
+(4, 'Dave', 2),          -- reports to Bob  
+(5, 'Eve', 2),           -- reports to Bob  
+(6, 'Frank', 3);         -- reports to Carol  
 
--- Recursive CTE to list each employee with their chain of managers
-WITH RECURSIVE hierarchy AS (
-    -- Anchor member: start with top‑level managers (no manager_id)
-    SELECT
-        emp_id,
-        emp_name,
-        manager_id,
-        CAST(emp_name AS CHAR(200)) AS path,
-        1 AS level
-    FROM employees
-    WHERE manager_id IS NULL
+-- Recursive CTE to list all subordinates of a given manager (e.g., manager_id = 1)  
+WITH RECURSIVE subordinates AS (  
+    -- Anchor member: start with the direct reports of the chosen manager  
+    SELECT emp_id, emp_name, manager_id, 1 AS level  
+    FROM employees  
+    WHERE manager_id = 1  
+    UNION ALL  
+    -- Recursive member: find employees whose manager is already in the result set  
+    SELECT e.emp_id, e.emp_name, e.manager_id, s.level + 1  
+    FROM employees e  
+    INNER JOIN subordinates s ON e.manager_id = s.emp_id  
+)  
+SELECT emp_id, emp_name, manager_id, level  
+FROM subordinates  
+ORDER BY level, emp_id;  
 
-    UNION ALL
-
-    -- Recursive member: join employees to their direct reports
-    SELECT
-        e.emp_id,
-        e.emp_name,
-        e.manager_id,
-        CONCAT(h.path, ' -> ', e.emp_name) AS path,
-        h.level + 1
-    FROM employees e
-    JOIN hierarchy h ON e.manager_id = h.emp_id
-)
-SELECT
-    emp_id,
-    emp_name,
-    manager_id,
-    path,
-    level
-FROM hierarchy
-ORDER BY path;
-
--- The result shows each employee, their manager chain (path), and depth level in the hierarchy.
+-- The result shows the hierarchy under Alice, with 'level' indicating depth in the tree.
 */
 
 /* JavaScript
-Topic: Closures in JavaScript  
+Topic: JavaScript Proxies – Intercepting Object Operations
 
-Explanation:  
-A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing. Closures enable data privacy, allowing you to expose only the functionality you want while keeping internal state hidden. They are created every time a function is defined, capturing the surrounding lexical environment at that moment. Common uses include function factories, module patterns, and maintaining state in asynchronous callbacks. Understanding closures is essential for mastering scope, callbacks, and functional programming techniques in JavaScript.  
+Explanation:
+A Proxy is a special object that wraps another object (the target) and intercepts fundamental operations such as property lookup, assignment, enumeration, function invocation, and more. By defining handler functions (traps) for these operations, you can customize behavior, enforce validation, log activity, or implement virtual properties. Proxies are powerful for creating reactive data structures, debugging tools, and API wrappers without modifying the original object. The syntax requires a target object and a handler object that contains the traps you want to implement. Proxies work transparently, so code that interacts with the proxy can use it like a regular object.
 
-Code example:  
-function createCounter(initialValue) {  
-    // This variable is local to createCounter but will be captured by the inner function  
-    let count = initialValue;  
+Code example with comments:
+// Original object that we want to protect
+const user = {
+    name: "Alice",
+    age: 30
+};
 
-    // The returned function forms a closure over `count`  
-    return function () {  
-        // Each call updates and returns the private `count` variable  
-        count += 1;  
-        return count;  
-    };  
-}  
+// Handler defining traps for get and set operations
+const handler = {
+    // Intercept property reads
+    get(target, prop, receiver) {
+        console.log(`Reading property "${prop}"`);
+        // Return the original value
+        return Reflect.get(target, prop, receiver);
+    },
+    // Intercept property writes
+    set(target, prop, value, receiver) {
+        console.log(`Attempting to set "${prop}" to ${value}`);
+        // Example validation: age must be a positive number
+        if (prop === "age" && (typeof value !== "number" || value <= 0)) {
+            throw new TypeError("Age must be a positive number");
+        }
+        // Perform the assignment
+        return Reflect.set(target, prop, value, receiver);
+    }
+};
 
-// Create two independent counters  
-const counterA = createCounter(0);  
-const counterB = createCounter(10);  
+// Create the proxy that wraps the user object
+const userProxy = new Proxy(user, handler);
 
-console.log(counterA()); // 1  
-console.log(counterA()); // 2  
-console.log(counterB()); // 11  
-console.log(counterB()); // 12  
-
-// The internal `count` variables are not directly accessible from outside  
-// Attempting to read `count` would result in ReferenceError.  
+// Using the proxy
+console.log(userProxy.name);      // Logs read operation, then prints "Alice"
+userProxy.age = 31;               // Logs set operation, updates age
+// userProxy.age = -5;            // Would throw a TypeError because of validation
+console.log(userProxy.age);      // Logs read operation, then prints 31
 */
 
 /* AI
 Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
 
 Explanation:  
-Few‑shot prompting supplies a model with a handful of example input‑output pairs inside the same request, teaching it the desired format without fine‑tuning. This technique works well for tasks like classification, data extraction, or code generation where a clear pattern can be demonstrated. By structuring the messages as a system prompt followed by user‑assistant example exchanges, the model learns to replicate the behavior for new inputs. The approach is lightweight, requires only API calls, and can be adapted on the fly for different domains. It also reduces the need for large labeled datasets, making rapid prototyping possible.
+Few‑shot prompting supplies the model with a handful of example input‑output pairs before the actual user query, guiding it toward the desired response style. This technique works well for tasks like data extraction, text classification, or generating code snippets where the model benefits from concrete illustrations. By carefully crafting the examples and using clear separators, you can control temperature, stop tokens, and token limits to achieve consistent results. The approach is lightweight—no fine‑tuning required—and can be applied to any model that supports chat‑style interactions. It’s especially useful for programmers who need reliable, repeatable outputs from a generative AI service.  
 
-Code example (Python, using the openai library):
+Code example (Python, using the openai library):  
+
 import os
 import openai
 
-# Load your OpenAI API key from the environment
+# Load your API key from an environment variable for safety
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-def classify_sentiment(text):
-    """
-    Uses a few‑shot prompt to classify sentiment as Positive, Negative, or Neutral.
-    """
-    # Define the system message that sets the overall role
-    system_msg = {"role": "system", "content": "You are a helpful assistant that classifies sentiment of short English sentences."}
-    
-    # Provide two example interactions (few‑shot)
-    examples = [
-        {"role": "user", "content": "I love the new design of this app!"},
-        {"role": "assistant", "content": "Positive"},
-        {"role": "user", "content": "The service was disappointing and slow."},
-        {"role": "assistant", "content": "Negative"}
-    ]
-    
-    # Append the actual user query
-    user_msg = {"role": "user", "content": text}
-    
-    # Build the full message list
-    messages = [system_msg] + examples + [user_msg]
-    
-    # Call the Chat Completion endpoint
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",   # lightweight model suitable for this task
-        messages=messages,
-        temperature=0.0        # deterministic output for classification
-    )
-    
-    # Extract and return the assistant's answer
-    return response.choices[0].message.content.strip()
+# Define a few‑shot prompt with two examples of converting English dates to ISO format
+messages = [
+    {"role": "system", "content": "You are a helpful assistant that converts human‑readable dates into ISO 8601 format (YYYY‑MM‑DD)."},
+    {"role": "user",   "content": "Convert the date: March 5, 2023"},
+    {"role": "assistant", "content": "2023-03-05"},
+    {"role": "user",   "content": "Convert the date: 12th July 1999"},
+    {"role": "assistant", "content": "1999-07-12"},
+    # New user query that the model should answer using the same pattern
+    {"role": "user",   "content": "Convert the date: November 9, 2026"}
+]
 
-# Example usage
-if __name__ == "__main__":
-    test_sentence = "The movie was okay, nothing special."
-    sentiment = classify_sentiment(test_sentence)
-    print(f"Input: {test_sentence}\nPredicted Sentiment: {sentiment}")
+response = openai.ChatCompletion.create(
+    model="gpt-4o-mini",          # Choose a model that supports chat completions
+    messages=messages,
+    temperature=0.0,              # Deterministic output for precise formatting
+    max_tokens=20,                # Small limit because the answer is short
+)
+
+# Print the model's answer
+print(response["choices"][0]["message"]["content"].strip())   # Expected output: 2026-11-09  
 */
 
