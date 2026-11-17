@@ -1,232 +1,195 @@
 <?php
-// 2026-11-17 09:07:37
+// 2026-11-17 09:33:46
 
 /* PHP
-Topic: PHP PDO (PHP Data Objects) for Secure Database Access  
+PHP Topic: Generators (yield)
 
-Explanation:  
-PHP PDO provides a consistent interface for accessing different databases, allowing you to write portable code.  
-It supports prepared statements, which protect against SQL injection by separating query logic from data.  
-PDO handles connection errors and can throw exceptions, making error handling more robust.  
-You can bind parameters by name or position, improving readability and maintainability of queries.  
-The extension also offers transaction support, letting you commit or roll back multiple operations as a single unit.  
+Explanation:
+Generators allow you to create iterators without the overhead of building an entire array in memory.  
+By using the keyword yield, a function can pause its execution and return a value, then resume later.  
+This is especially useful when processing large data sets, streams, or database results.  
+Generators provide a simple syntax for lazy iteration, improving performance and reducing memory usage.  
+They can be combined with foreach loops just like regular arrays or objects implementing Traversable.  
 
-Code Example (with comments):  
+Code example with comments:
 
-<?php
-// Enable PDO exceptions for better error handling
-$options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-];
-
-// Create a new PDO instance (replace placeholders with real credentials)
-$dsn = 'mysql:host=localhost;dbname=sample_db;charset=utf8mb4';
-$username = 'db_user';
-$password = 'db_pass';
-
-try {
-    $pdo = new PDO($dsn, $username, $password, $options);
-} catch (PDOException $e) {
-    // Handle connection errors
-    die('Connection failed: ' . $e->getMessage());
+function getNumbers($max) {
+    // Loop from 1 to the maximum value
+    for ($i = 1; $i <= $max; $i++) {
+        // Yield the current number and pause execution
+        yield $i;
+        // Execution resumes here on the next iteration
+    }
 }
 
-// Example of a prepared SELECT statement using named placeholders
-$sql = 'SELECT id, name, email FROM users WHERE status = :status AND created_at > :date';
-$stmt = $pdo->prepare($sql);
+// Create a generator that will produce numbers up to 5
+$numbers = getNumbers(5);
 
-// Bind values to the placeholders
-$status = 'active';
-$date   = '2023-01-01';
-$stmt->bindParam(':status', $status, PDO::PARAM_STR);
-$stmt->bindParam(':date',   $date,   PDO::PARAM_STR);
-
-// Execute the statement
-$stmt->execute();
-
-// Fetch all matching rows
-$users = $stmt->fetchAll();
-
-// Output the results
-foreach ($users as $user) {
-    echo "ID: {$user['id']}, Name: {$user['name']}, Email: {$user['email']}\n";
+// Iterate over the generator with foreach
+foreach ($numbers as $num) {
+    // Output each number
+    echo "Number: $num\n";
 }
 
-// Example of a transaction: insert a new user and log the action
-try {
-    $pdo->beginTransaction();
-
-    // Insert new user
-    $insertSql = 'INSERT INTO users (name, email, status, created_at) VALUES (:name, :email, :status, NOW())';
-    $insertStmt = $pdo->prepare($insertSql);
-    $insertStmt->execute([
-        ':name'   => 'Jane Doe',
-        ':email'  => 'jane@example.com',
-        ':status' => 'active',
-    ]);
-
-    // Log the insertion
-    $logSql = 'INSERT INTO audit_log (action, user_id, performed_at) VALUES (:action, :user_id, NOW())';
-    $logStmt = $pdo->prepare($logSql);
-    $logStmt->execute([
-        ':action'  => 'User Created',
-        ':user_id' => $pdo->lastInsertId(),
-    ]);
-
-    // Commit both statements as a single unit
-    $pdo->commit();
-} catch (Exception $e) {
-    // Roll back if anything goes wrong
-    $pdo->rollBack();
-    echo 'Transaction failed: ' . $e->getMessage();
+// The generator can be rewound by creating a new instance
+$moreNumbers = getNumbers(3);
+while ($moreNumbers->valid()) {
+    echo "Next: " . $moreNumbers->current() . "\n";
+    $moreNumbers->next();
 }
-?>
 */
 
 /* Laravel
-Topic: Laravel Service Container and Automatic Dependency Injection
+Laravel Topic: Eloquent Mutators and Accessors  
 
 Explanation:  
-The Laravel service container is a powerful tool that manages class dependencies and performs dependency injection automatically. It resolves classes from the container, injecting any required dependencies defined in their constructors. You can bind interfaces to concrete implementations, allowing you to swap implementations without changing the consuming code. The container also supports contextual binding, which lets you specify different implementations for the same interface in different parts of the application. Using the container leads to cleaner, more testable code by decoupling class responsibilities.
+Eloquent mutators allow you to alter attribute values before they are saved to the database, while accessors let you format attribute values when they are retrieved. They are defined as methods on your model using the setAttributeNameAttribute and getAttributeNameAttribute naming conventions. This feature is useful for tasks such as hashing passwords, formatting dates, or appending units to numeric values. Mutators and accessors keep transformation logic encapsulated within the model, promoting clean controller code. They work automatically whenever you assign or retrieve the attribute on a model instance.
 
-Code example (with inline comments):
+Code example (User model with password mutator and full_name accessor):
 
 <?php
-namespace App\Http\Controllers;
+namespace App\Models;
 
-use App\Contracts\PaymentGateway;          // Interface
-use App\Services\StripeGateway;            // Concrete implementation
-use Illuminate\Http\Request;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 
-class CheckoutController extends Controller
+class User extends Authenticatable
 {
-    protected $paymentGateway;
-
-    // Laravel will automatically resolve the PaymentGateway implementation from the container
-    public function __construct(PaymentGateway $paymentGateway)
+    // Mutator: automatically hash password when it is set
+    public function setPasswordAttribute($value)
     {
-        $this->paymentGateway = $paymentGateway; // Assigned for use in controller methods
+        // Only hash if the value is not already hashed
+        $this->attributes['password'] = \Hash::needsRehash($value) ? \Hash::make($value) : $value;
     }
 
-    public function process(Request $request)
+    // Accessor: combine first_name and last_name into a full_name attribute
+    public function getFullNameAttribute()
     {
-        $amount = $request->input('amount');
-
-        // Use the injected gateway to charge the customer
-        $result = $this->paymentGateway->charge($amount);
-
-        if ($result->successful()) {
-            return response()->json(['status' => 'Payment successful']);
-        }
-
-        return response()->json(['status' => 'Payment failed'], 422);
+        // Trim to avoid extra spaces if one part is missing
+        return trim($this->first_name . ' ' . $this->last_name);
     }
-}
 
-// In a service provider (e.g., App\Providers\AppServiceProvider)
-
-public function register()
-{
-    // Bind the interface to a concrete class so the container knows what to inject
-    $this->app->bind(
-        \App\Contracts\PaymentGateway::class,
-        \App\Services\StripeGateway::class
-    );
-
-    // Example of contextual binding: use PayPal for orders, Stripe for subscriptions
-    $this->app->when(SubscriptionController::class)
-              ->needs(PaymentGateway::class)
-              ->give(PayPalGateway::class);
+    // Example usage in a controller or tinker:
+    // $user = new User;
+    // $user->first_name = 'Jane';
+    // $user->last_name = 'Doe';
+    // $user->password = 'secret123';   // Mutator hashes this value
+    // $user->save();
+    // echo $user->full_name;           // Accessor returns "Jane Doe"
 }
 ?>
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) and Recursive Queries  
+Topic: Common Table Expressions (CTE) in MySQL
 
 Explanation:  
-A Common Table Expression (CTE) is a named temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs are defined using the WITH clause and improve readability by separating complex subqueries from the main query logic.  
-When a CTE references itself, it becomes a recursive CTE, which is useful for traversing hierarchical data such as organization charts or folder structures.  
-Recursive CTEs consist of an anchor member (the starting rows) and a recursive member that repeatedly references the CTE until no new rows are produced.  
-MySQL 8.0+ fully supports both non‑recursive and recursive CTEs, allowing you to write elegant, set‑based solutions for problems that previously required procedural code.  
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
+CTEs are defined using the WITH clause and improve query readability by allowing you to break complex logic into named subqueries.  
+MySQL supports both non‑recursive and recursive CTEs starting from version 8.0.  
+Recursive CTEs enable hierarchical queries such as traversing organizational charts or tree structures.  
+CTEs exist only for the duration of the statement; they are not stored in the database schema.
 
-Code example:  
-WITH RECURSIVE OrgChart AS (  
-    -- Anchor member: select the top‑level manager(s)  
-    SELECT employee_id, manager_id, employee_name, 1 AS level  
+Code example with comments:  
+
+CREATE TABLE employees (  
+    emp_id INT PRIMARY KEY,  
+    name VARCHAR(50),  
+    manager_id INT NULL   -- References emp_id of the employee's manager  
+);  
+
+INSERT INTO employees (emp_id, name, manager_id) VALUES  
+(1, 'Alice', NULL),  
+(2, 'Bob', 1),  
+(3, 'Carol', 1),  
+(4, 'Dave', 2),  
+(5, 'Eve', 2);  
+
+-- Recursive CTE to list each employee with their reporting hierarchy depth  
+WITH RECURSIVE emp_hierarchy AS (  
+    -- Anchor member: top‑level managers (no manager) start at depth 1  
+    SELECT emp_id, name, manager_id, 1 AS depth  
     FROM employees  
     WHERE manager_id IS NULL  
+
     UNION ALL  
-    -- Recursive member: find employees reporting to the current level  
-    SELECT e.employee_id, e.manager_id, e.employee_name, oc.level + 1  
+
+    -- Recursive member: join employees to their managers and increment depth  
+    SELECT e.emp_id, e.name, e.manager_id, eh.depth + 1  
     FROM employees e  
-    INNER JOIN OrgChart oc ON e.manager_id = oc.employee_id  
+    JOIN emp_hierarchy eh ON e.manager_id = eh.emp_id  
 )  
-SELECT employee_id, manager_id, employee_name, level  
-FROM OrgChart  
-ORDER BY level, manager_id;  
+SELECT emp_id, name, manager_id, depth  
+FROM emp_hierarchy  
+ORDER BY depth, manager_id;   -- Result shows each employee and how many levels down they are from the top manager.
 */
 
 /* JavaScript
-Topic: JavaScript Closures and Lexical Scope
+Topic: Closures in JavaScript
 
-Explanation: A closure is a function that retains access to the variables of its outer (enclosing) function even after that outer function has finished executing. This happens because the inner function forms a lexical environment that captures the variables it references. Closures enable data privacy, allowing you to create private state that cannot be accessed directly from outside. They are fundamental for patterns such as module creation, function factories, and partial application. Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state across function calls.
+Explanation:  
+A closure is a function that retains access to its lexical scope even when that function is executed outside of its original context.  
+Closures enable data privacy by allowing inner functions to reference variables defined in an outer function that would otherwise be inaccessible.  
+They are created every time a function is defined, capturing the surrounding environment at that moment.  
+Common use‑cases include function factories, module patterns, and maintaining state across asynchronous callbacks.  
+Understanding closures helps avoid common pitfalls such as unintentionally sharing mutable variables between invocations.
 
-Code example with comments:
-function makeCounter() {
-    let count = 0; // private variable that lives in the closure
-    return function() {
-        count++; // modify the private variable each time the inner function runs
-        return count; // expose the current count value
+Code Example (with comments):
+function makeCounter(start) {
+    // `count` is private to the closure created by makeCounter
+    let count = start; 
+
+    // The returned function forms a closure over `count`
+    return function increment(step = 1) {
+        // Modify the captured `count` variable
+        count += step;       
+        // Return the current value
+        return count;       
     };
 }
 
-// Create first independent counter
-const counterA = makeCounter();
-console.log(counterA()); // 1
-console.log(counterA()); // 2
+// Create a new counter starting at 10
+const counterA = makeCounter(10);
+console.log(counterA());      // 11 (default step 1)
+console.log(counterA(5));     // 16 (adds 5)
+console.log(counterA());      // 17
 
-// Create second independent counter, its count starts from 0
-const counterB = makeCounter();
-console.log(counterB()); // 1
-
-// counterA still retains its own count
-console.log(counterA()); // 3
+// Create a separate counter, demonstrating independent closures
+const counterB = makeCounter(100);
+console.log(counterB(10));    // 110
+console.log(counterB());      // 111   (does not affect counterA)
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API  
+Topic: Few‑Shot Prompt Engineering with OpenAI’s ChatCompletion API  
 
 Explanation:  
-Few‑shot prompting supplies a small number of example interactions to guide the model’s behavior without extensive fine‑tuning. By embedding a few user‑assistant turns in the system or user message, you can shape the tone, format, or domain knowledge the model applies. This technique works well for tasks like data extraction, code generation, or style‑consistent writing. The examples act as in‑context demonstrations, letting the model infer the desired pattern. It is lightweight, portable across models, and easily adjustable by adding or swapping examples.
+Few‑shot prompting supplies a small set of example interactions within a single request to guide the model’s behavior. By placing well‑chosen input‑output pairs before the actual user query, you can shape the style, format, or domain knowledge the model applies. This technique works especially well with GPT‑4‑Turbo, where each example counts against the token limit but yields more deterministic results. It is useful for tasks like generating code snippets, extracting structured data, or maintaining a consistent tone across responses. The approach is lightweight—no fine‑tuning required—and can be adjusted dynamically at runtime.
 
 Code example (Python, using the openai library):  
 
+import os  
 import openai  
 
-# Replace with your actual API key  
-openai.api_key = "sk-YOUR_API_KEY"  
+# Load your OpenAI API key from the environment  
+openai.api_key = os.getenv("OPENAI_API_KEY")  
 
-# Define a few‑shot prompt: a system instruction plus two example Q&A pairs  
+# Define a few‑shot prompt with two examples and the new user request  
 messages = [  
-    {"role": "system", "content": "You are a helpful assistant that converts plain English descriptions of arithmetic problems into valid Python expressions."},  
-    {"role": "user", "content": "What is the sum of 12 and 7?"},  
-    {"role": "assistant", "content": "12 + 7"},  
-    {"role": "user", "content": "Multiply 8 by 5 and then subtract 3."},  
-    {"role": "assistant", "content": "(8 * 5) - 3"},  
-    # New query that will follow the demonstrated pattern  
-    {"role": "user", "content": "Divide 45 by 9 and add 2."}  
+    {"role": "system", "content": "You are an expert Python programmer who writes clear, commented code."},  
+    {"role": "user", "content": "Write a function that returns the factorial of a number."},  
+    {"role": "assistant", "content": """def factorial(n):\n    \"\"\"Return the factorial of n using recursion.\"\"\"\n    if n == 0:\n        return 1\n    return n * factorial(n - 1)  # Recursive call"""},  
+    {"role": "user", "content": "Create a function that checks if a string is a palindrome, ignoring case and spaces."}  
 ]  
 
+# Send the request to the ChatCompletion endpoint  
 response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",  
+    model="gpt-4o-mini",   # choose a model that supports chat completions  
     messages=messages,  
-    temperature=0.0  # deterministic output for code-like tasks  
+    temperature=0.2,       # low temperature for more deterministic output  
 )  
 
-# The model’s reply should be a Python expression matching the pattern  
-print(response["choices"][0]["message"]["content"].strip())  
+# Extract and print the assistant’s answer  
+assistant_reply = response["choices"][0]["message"]["content"]  
+print(assistant_reply)   # The generated palindrome‑checking function with comments  
 */
 
