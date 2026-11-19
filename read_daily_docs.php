@@ -1,228 +1,261 @@
 <?php
-// 2026-11-18 08:51:52
+// 2026-11-19 09:06:49
 
 /* PHP
-PHP Generators  
-A generator is a special kind of function that can be paused and resumed, allowing you to produce a sequence of values without building an entire array in memory.  
-They use the `yield` keyword to return a value each time the generator is iterated.  
-Generators are especially useful for processing large data sets, reading files line‑by‑line, or streaming results from a database.  
-Because the state of the function is retained between yields, they provide an efficient way to implement lazy evaluation.  
-Using a generator can significantly reduce memory consumption and improve performance in I/O‑bound scripts.  
+Topic: PDO Prepared Statements for Secure Database Interaction  
 
-Example – reading a large CSV file one line at a time with a generator:
+Explanation:  
+- PDO (PHP Data Objects) provides a uniform interface for accessing multiple databases.  
+- Using prepared statements separates SQL code from data, preventing SQL injection attacks.  
+- Placeholders in the query are bound to actual values at execution time, allowing the driver to handle proper escaping.  
+- Prepared statements can be reused multiple times with different parameters, improving performance.  
+- Error handling with PDO exceptions makes debugging easier and keeps code clean.  
+
+Code example (with comments):  
 
 <?php
-// Define a generator that yields each line of a CSV file as an associative array
-function readCsvGenerator(string $filePath, array $headers) : Generator {
-    // Open the file for reading
-    $handle = fopen($filePath, 'r');
-    if ($handle === false) {
-        throw new RuntimeException("Unable to open file: $filePath");
-    }
+// Enable PDO exceptions for error handling
+$options = [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+];
 
-    // Loop through each line until end of file
-    while (($row = fgetcsv($handle)) !== false) {
-        // Combine header names with row values to create an associative array
-        $record = array_combine($headers, $row);
-        // Yield the record back to the caller; execution pauses here
-        yield $record;
-    }
+// Create a new PDO instance (replace DSN, username, password with your credentials)
+$pdo = new PDO('mysql:host=localhost;dbname=testdb;charset=utf8mb4', 'dbuser', 'dbpass', $options);
 
-    // Close the file when the generator is exhausted
-    fclose($handle);
+// Define an INSERT query with named placeholders
+$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())";
+
+// Prepare the statement once
+$stmt = $pdo->prepare($sql);
+
+// Sample data to insert
+$users = [
+    ['username' => 'alice', 'email' => 'alice@example.com'],
+    ['username' => 'bob',   'email' => 'bob@example.org'],
+];
+
+// Execute the prepared statement for each user
+foreach ($users as $user) {
+    // Bind values to the named placeholders and execute
+    $stmt->execute([
+        ':username' => $user['username'],
+        ':email'    => $user['email'],
+    ]);
 }
 
-// Usage example
-$csvFile = '/path/to/large_file.csv';
-$csvHeaders = ['id', 'name', 'email', 'created_at'];
+// Retrieve data using a SELECT with positional placeholders
+$selectSql = "SELECT id, username, email FROM users WHERE created_at > ?";
+$stmtSelect = $pdo->prepare($selectSql);
+$stmtSelect->execute([date('Y-m-d H:i:s', strtotime('-1 day'))]);
 
-foreach (readCsvGenerator($csvFile, $csvHeaders) as $row) {
-    // Process each row individually – memory usage stays low
-    echo "User {$row['id']}: {$row['name']} ({$row['email']})\n";
+// Fetch and display results
+while ($row = $stmtSelect->fetch()) {
+    echo "ID: {$row['id']}, User: {$row['username']}, Email: {$row['email']}\n";
 }
 ?>
 */
 
 /* Laravel
-Topic: Laravel Event Broadcasting with Pusher
+Topic: Laravel Custom Form Request Validation  
 
 Explanation:  
-Laravel's event broadcasting allows you to push server‑side events to client browsers in real time.  
-By defining an event class that implements ShouldBroadcast, Laravel will automatically queue the broadcast to the configured driver (e.g., Pusher).  
-The broadcast data is serialized and sent over a secure WebSocket channel, where JavaScript listeners can react instantly.  
-You can protect channels with authorization callbacks to ensure only authorized users receive the events.  
-This pattern is ideal for live notifications, chat systems, or real‑time dashboards without refreshing the page.
+Laravel’s Form Request classes encapsulate validation logic, keeping controllers clean and focused on handling requests.  
+You create a Form Request with artisan, define rules and custom messages, and type‑hint it in a controller method.  
+When the request is injected, Laravel automatically runs the validation before the controller logic executes.  
+If validation fails, a JSON response (or redirect) is generated based on the request type.  
+Using Form Requests also provides an authorized() method for permission checks on the incoming data.  
 
-Code example (Event class, broadcast configuration, and a simple listener in JavaScript):
+Code Example (app/Http/Requests/StorePostRequest.php):  
+<?php  
+namespace App\Http\Requests;  
 
-// app/Events/MessageSent.php
-namespace App\Events;
+use Illuminate\Foundation\Http\FormRequest;  
 
-use Illuminate\Broadcasting\Channel;
-use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
-use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
-use Illuminate\Foundation\Events\Dispatchable;
-use Illuminate\Queue\SerializesModels;
+class StorePostRequest extends FormRequest  
+{  
+    // Determine if the user is authorized to make this request  
+    public function authorize()  
+    {  
+        // Example: only allow logged‑in users  
+        return auth()->check();  
+    }  
 
-class MessageSent implements ShouldBroadcast
-{
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    // Validation rules for the request data  
+    public function rules()  
+    {  
+        return [  
+            'title'   => 'required|string|max:255',  
+            'content' => 'required|string',  
+            'tags'    => 'array',  
+            'tags.*'  => 'integer|exists:tags,id',  
+        ];  
+    }  
 
-    public $message;        // data that will be sent to the client
-    public $userId;         // ID of the user who sent the message
+    // Custom error messages (optional)  
+    public function messages()  
+    {  
+        return [  
+            'title.required' => 'A title is required for the post.',  
+            'content.required' => 'Please provide the post content.',  
+        ];  
+    }  
+}  
 
-    public function __construct($message, $userId)
-    {
-        $this->message = $message;
-        $this->userId  = $userId;
-    }
+Usage in a controller (app/Http/Controllers/PostController.php):  
+<?php  
+namespace App\Http\Controllers;  
 
-    // Define the channel the event will be broadcast on
-    public function broadcastOn()
-    {
-        // Private channel so only authenticated users can listen
-        return new PrivateChannel('chat.'.$this->userId);
-    }
+use App\Http\Requests\StorePostRequest;  
+use App\Models\Post;  
 
-    // Optional: customize the event name seen on the client
-    public function broadcastAs()
-    {
-        return 'MessageSent';
-    }
-}
+class PostController extends Controller  
+{  
+    // Store a new blog post using the custom request for validation  
+    public function store(StorePostRequest $request)  
+    {  
+        // Validation has already passed at this point  
 
-// routes/channels.php – authorize access to the private channel
-Broadcast::channel('chat.{userId}', function ($user, $userId) {
-    // Only allow the user to listen to their own channel
-    return (int) $user->id === (int) $userId;
-});
+        // Retrieve only the validated fields  
+        $data = $request->validated();  
 
-// In a controller or service, dispatch the event when a message is saved
-use App\Events\MessageSent;
+        // Create the post and associate tags if provided  
+        $post = Post::create([  
+            'title'   => $data['title'],  
+            'content' => $data['content'],  
+            'user_id' => auth()->id(),  
+        ]);  
 
-public function store(Request $request)
-{
-    $message = Message::create([
-        'user_id' => auth()->id(),
-        'body'    => $request->input('body')
-    ]);
+        if (!empty($data['tags'])) {  
+            $post->tags()->attach($data['tags']); // assuming a many‑to‑many relation  
+        }  
 
-    // Broadcast the new message to the recipient
-    event(new MessageSent($message->body, $message->recipient_id));
-
-    return response()->json(['status' => 'Message sent']);
-}
-
-// resources/js/app.js – listen for the broadcasted event using Laravel Echo
-import Echo from 'laravel-echo';
-import Pusher from 'pusher-js';
-
-window.Pusher = Pusher;
-
-window.Echo = new Echo({
-    broadcaster: 'pusher',
-    key: process.env.MIX_PUSHER_APP_KEY,
-    cluster: process.env.MIX_PUSHER_APP_CLUSTER,
-    encrypted: true,
-    authEndpoint: '/broadcasting/auth'   // Laravel’s default auth route
-});
-
-// Subscribe to the private channel for the authenticated user
-window.Echo.private('chat.'+Laravel.userId)
-    .listen('.MessageSent', (e) => {
-        console.log('New message received:', e.message);
-        // Update the UI in real time, e.g., prepend the message to a chat list
-    });
+        return response()->json([  
+            'message' => 'Post created successfully.',  
+            'post'    => $post,  
+        ], 201);  
+    }  
+}  
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) in MySQL  
+Topic: Common Table Expressions (CTEs) and Recursive Queries
 
 Explanation:  
 A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs are defined using the WITH clause and can be recursive, allowing hierarchical data to be processed efficiently.  
-They improve query readability by breaking complex logic into named subqueries.  
-MySQL supports both non‑recursive and recursive CTEs starting from version 8.0.  
-CTEs are scoped to the statement that defines them and are not persisted beyond execution.  
+CTEs improve readability by allowing you to break complex queries into logical building blocks.  
+When the CTE is defined with the RECURSIVE keyword, it can refer to itself, enabling hierarchical or iterative data processing.  
+Recursive CTEs consist of an anchor member (the base case) and a recursive member that repeatedly references the CTE until a termination condition is met.  
+They are especially useful for traversing tree structures such as organizational charts, category hierarchies, or graph paths.  
 
-Code example (calculating a hierarchical employee manager chain):  
+Code example:  
+-- Create a simple table to store an employee hierarchy  
+CREATE TABLE employees (  
+    emp_id INT PRIMARY KEY,  
+    emp_name VARCHAR(50),  
+    manager_id INT NULL   -- NULL for top‑level manager  
+);  
 
+-- Insert sample data  
+INSERT INTO employees (emp_id, emp_name, manager_id) VALUES  
+(1, 'Alice', NULL),   -- CEO  
+(2, 'Bob', 1),        -- reports to Alice  
+(3, 'Carol', 1),      -- reports to Alice  
+(4, 'Dave', 2),       -- reports to Bob  
+(5, 'Eve', 2),        -- reports to Bob  
+(6, 'Frank', 3);      -- reports to Carol  
+
+-- Recursive CTE to list each employee together with the chain of managers above them  
 WITH RECURSIVE manager_path AS (  
-    SELECT employee_id, manager_id, employee_name, 1 AS level  
+    -- Anchor member: start with each employee and their immediate manager  
+    SELECT emp_id, emp_name, manager_id, CAST(emp_name AS CHAR(200)) AS path  
     FROM employees  
-    WHERE manager_id IS NULL          -- top‑level manager (no manager)  
+    WHERE manager_id IS NULL   -- top‑level managers (e.g., CEO)  
+
     UNION ALL  
-    SELECT e.employee_id, e.manager_id, e.employee_name, mp.level + 1  
+
+    -- Recursive member: join employees to the previous level to build the path  
+    SELECT e.emp_id, e.emp_name, e.manager_id,  
+           CONCAT(mp.path, ' -> ', e.emp_name) AS path  
     FROM employees e  
-    JOIN manager_path mp ON e.manager_id = mp.employee_id  
+    JOIN manager_path mp ON e.manager_id = mp.emp_id  
 )  
-SELECT employee_id, employee_name, manager_id, level  
+SELECT emp_id, emp_name, path  
 FROM manager_path  
-ORDER BY level, employee_name;   -- shows the hierarchy from top to bottom with indentation level.  
+ORDER BY emp_id;   -- Result shows each employee with the full reporting chain  
 */
 
 /* JavaScript
-Topic: Closures in JavaScript  
+Topic: Closures in JavaScript
 
-Explanation:  
-A closure is a function that retains access to its lexical scope even after the outer function has finished executing. It allows inner functions to remember the variables from the environment in which they were created. Closures are useful for data encapsulation, creating private variables, and implementing function factories. Because the inner function holds a reference to the outer variables, those variables are not garbage‑collected until the closure itself is no longer reachable. Understanding closures is essential for mastering asynchronous code, callbacks, and module patterns in JavaScript.  
+Explanation:
+A closure is created when an inner function accesses variables from its outer (enclosing) function after the outer function has finished executing. This allows the inner function to retain a reference to the outer scope’s variables, preserving their values between calls. Closures are useful for data encapsulation, creating private state, and implementing function factories. Because the variables are kept alive by the closure, they are not garbage‑collected until the inner function itself becomes unreachable. Understanding closures helps avoid common pitfalls such as unintended sharing of mutable state in loops.
 
-Code example:  
-function makeCounter(initialValue) {                 // outer function creates a private variable  
-    let count = initialValue;                       // this variable is captured by the inner function  
+Code Example:
+function makeCounter(start) {
+    let count = start;                 // count is private to makeCounter
+    return function() {
+        count += 1;                    // inner function forms a closure over count
+        return count;
+    };
+}
 
-    return function increment(step = 1) {           // the returned function forms a closure  
-        count += step;                              // it can read and modify 'count'  
-        return count;                               // expose the updated value  
-    };                                              // end of inner function  
+const counterA = makeCounter(0);       // creates a new closure with its own count
+console.log(counterA());               // 1
+console.log(counterA());               // 2
 
-}                                                   // end of outer function  
-
-const counter = makeCounter(10); // counter now has its own private 'count'  
-
-console.log(counter());   // 11 (default step of 1)  
-console.log(counter(5));  // 16 (adds 5)  
-console.log(counter());   // 17  
-
-// Even though makeCounter has finished, the inner function still accesses 'count' via the closure.  
+const counterB = makeCounter(10);      // separate closure, independent count
+console.log(counterB());               // 11
+console.log(counterA());               // 3  (counterA’s count continues independently)
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
+Topic: Prompt Engineering with Few‑Shot Learning for Text Classification
 
 Explanation:  
-Few‑shot prompting supplies a small set of example interactions to guide the model’s behavior without fine‑tuning. By placing a few input‑output pairs in the system or user messages, you can shape the style, format, or domain knowledge the model uses when answering. This technique works well for tasks like data extraction, code generation, or role‑playing scenarios where a full training pipeline would be overkill. The examples should be concise, representative, and cover edge cases you expect. Adjust the temperature to a low value (e.g., 0.2) for more deterministic outputs when consistency matters.  
+Few‑shot prompting lets a language model learn a task from just a handful of examples embedded in the prompt. By carefully formatting the examples and the query, you can guide the model to produce accurate classifications without any fine‑tuning. This approach is especially useful when labeled data is scarce or when rapid prototyping is needed. The prompt typically includes a clear instruction, several input‑label pairs (the "shots"), and finally the new input whose label the model must predict. Adjusting the number of shots, the phrasing of the instruction, and the delimiters can have a big impact on performance. Below is a Python example using the OpenAI Chat Completion API to classify sentiment with three few‑shot examples.
 
-Code example (Python, using the openai library):  
+Code example (Python, requires openai package and a valid API key):
+import os
+import openai
 
-import openai  
+# Set your OpenAI API key (ensure it is kept secret)
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Set your API key – replace with your actual key or use environment variable  
-openai.api_key = "sk-YOUR_API_KEY"  
+def classify_sentiment(text):
+    # Construct a few‑shot prompt with instruction, examples, and the target input
+    prompt = """You are an assistant that classifies the sentiment of a sentence as Positive, Negative, or Neutral.
 
-# Define a few‑shot prompt: system message + example user‑assistant exchanges  
-messages = [  
-    {"role": "system", "content": "You are a helpful assistant that extracts product names and prices from informal text."},  
-    {"role": "user", "content": "I bought a new laptop for $999 and a mouse for $25."},  
-    {"role": "assistant", "content": "Laptop: $999\nMouse: $25"},  
-    {"role": "user", "content": "Just got the latest smartphone, it cost me 799 dollars!"},  
-    {"role": "assistant", "content": "Smartphone: $799"}  
-]  
+Example 1:
+Sentence: I love the new design of this app!
+Sentiment: Positive
 
-# New query that follows the same pattern  
-messages.append({"role": "user", "content": "Picked up a gaming chair for $350 and a desk lamp for $45."})  
+Example 2:
+Sentence: The update broke my workflow and caused many errors.
+Sentiment: Negative
 
-# Call the Chat Completion endpoint with low temperature for consistency  
-response = openai.ChatCompletion.create(  
-    model="gpt-4o-mini",  
-    messages=messages,  
-    temperature=0.2,  
-    max_tokens=100  
-)  
+Example 3:
+Sentence: The app works as expected.
+Sentiment: Neutral
 
-# Print the model’s structured extraction  
-print(response.choices[0].message["content"])   # Expected output: "Gaming chair: $350\nDesk lamp: $45"
+Now classify the following sentence:
+Sentence: {} 
+Sentiment:""".format(text)
+
+    # Call the chat completion endpoint with the prompt as a user message
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",               # choose a suitable model
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.0,                   # deterministic output for classification
+        max_tokens=10                      # limit response length
+    )
+    # Extract and clean the model's answer
+    sentiment = response.choices[0].message.content.strip()
+    return sentiment
+
+# Example usage
+sample = "I'm not sure if this feature is useful."
+print("Input:", sample)
+print("Predicted Sentiment:", classify_sentiment(sample))
 */
 
