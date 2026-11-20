@@ -1,261 +1,227 @@
 <?php
-// 2026-11-19 09:06:49
+// 2026-11-20 08:51:28
 
 /* PHP
-Topic: PDO Prepared Statements for Secure Database Interaction  
+Topic: Generators in PHP
 
 Explanation:  
-- PDO (PHP Data Objects) provides a uniform interface for accessing multiple databases.  
-- Using prepared statements separates SQL code from data, preventing SQL injection attacks.  
-- Placeholders in the query are bound to actual values at execution time, allowing the driver to handle proper escaping.  
-- Prepared statements can be reused multiple times with different parameters, improving performance.  
-- Error handling with PDO exceptions makes debugging easier and keeps code clean.  
+Generators allow you to create iterators without building an entire class that implements the Iterator interface. They use the yield keyword to produce values one at a time, keeping the function's state between calls. This reduces memory consumption because the whole dataset does not need to be stored in an array. Generators are especially useful for processing large data streams, such as reading big files or database rows. They also make code that deals with lazy sequences more readable and maintainable.
 
-Code example (with comments):  
+Code example with comments:  
 
 <?php
-// Enable PDO exceptions for error handling
-$options = [
-    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-];
-
-// Create a new PDO instance (replace DSN, username, password with your credentials)
-$pdo = new PDO('mysql:host=localhost;dbname=testdb;charset=utf8mb4', 'dbuser', 'dbpass', $options);
-
-// Define an INSERT query with named placeholders
-$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, NOW())";
-
-// Prepare the statement once
-$stmt = $pdo->prepare($sql);
-
-// Sample data to insert
-$users = [
-    ['username' => 'alice', 'email' => 'alice@example.com'],
-    ['username' => 'bob',   'email' => 'bob@example.org'],
-];
-
-// Execute the prepared statement for each user
-foreach ($users as $user) {
-    // Bind values to the named placeholders and execute
-    $stmt->execute([
-        ':username' => $user['username'],
-        ':email'    => $user['email'],
-    ]);
+// A simple generator that yields numbers from 1 up to a given limit
+function rangeGenerator(int $max): Generator {
+    for ($i = 1; $i <= $max; $i++) {
+        // yield pauses the function and returns the current value
+        yield $i;
+    }
 }
 
-// Retrieve data using a SELECT with positional placeholders
-$selectSql = "SELECT id, username, email FROM users WHERE created_at > ?";
-$stmtSelect = $pdo->prepare($selectSql);
-$stmtSelect->execute([date('Y-m-d H:i:s', strtotime('-1 day'))]);
-
-// Fetch and display results
-while ($row = $stmtSelect->fetch()) {
-    echo "ID: {$row['id']}, User: {$row['username']}, Email: {$row['email']}\n";
+// Using the generator in a foreach loop
+foreach (rangeGenerator(5) as $number) {
+    // Each iteration receives the next value from the generator
+    echo "Number: $number\n";
 }
+
+// Demonstrating that the generator is lazy – it does not build an array
+function readLines(string $filePath): Generator {
+    $handle = fopen($filePath, 'r');
+    if ($handle) {
+        while (($line = fgets($handle)) !== false) {
+            // Yield each line as it is read from the file
+            yield rtrim($line, "\r\n");
+        }
+        fclose($handle);
+    } else {
+        throw new RuntimeException("Cannot open file: $filePath");
+    }
+}
+
+// Example usage (assumes 'large.txt' exists)
+// foreach (readLines('large.txt') as $line) {
+//     // Process each line without loading the whole file into memory
+//     echo $line . PHP_EOL;
+// }
 ?>
 */
 
 /* Laravel
-Topic: Laravel Custom Form Request Validation  
+Topic: Service Container & Dependency Injection in Laravel
 
-Explanation:  
-Laravel’s Form Request classes encapsulate validation logic, keeping controllers clean and focused on handling requests.  
-You create a Form Request with artisan, define rules and custom messages, and type‑hint it in a controller method.  
-When the request is injected, Laravel automatically runs the validation before the controller logic executes.  
-If validation fails, a JSON response (or redirect) is generated based on the request type.  
-Using Form Requests also provides an authorized() method for permission checks on the incoming data.  
+Explanation:
+The Laravel service container is a powerful tool for managing class dependencies and performing dependency injection. It resolves objects automatically, allowing you to type‑hint classes in constructors or controller methods. By binding interfaces to concrete implementations, you can swap out functionality without changing the consuming code. The container also supports singleton bindings for shared instances and contextual bindings for specific use cases. Using the container makes your application more modular, testable, and adheres to the SOLID principles.
 
-Code Example (app/Http/Requests/StorePostRequest.php):  
-<?php  
-namespace App\Http\Requests;  
+Code Example (app/Providers/AppServiceProvider.php):
+public function register()
+{
+    // Bind an interface to a concrete class so the container can resolve it
+    $this->app->bind(
+        App\Contracts\PaymentGateway::class,
+        App\Services\StripePaymentGateway::class
+    );
 
-use Illuminate\Foundation\Http\FormRequest;  
+    // Register a singleton that should be shared across the application
+    $this->app->singleton(
+        App\Services\ReportGenerator::class,
+        function ($app) {
+            // The container can resolve dependencies of ReportGenerator automatically
+            return new App\Services\ReportGenerator($app->make(App\Repositories\ReportRepository::class));
+        }
+    );
+}
 
-class StorePostRequest extends FormRequest  
-{  
-    // Determine if the user is authorized to make this request  
-    public function authorize()  
-    {  
-        // Example: only allow logged‑in users  
-        return auth()->check();  
-    }  
+// Example of automatic injection in a controller (app/Http/Controllers/OrderController.php)
+use App\Contracts\PaymentGateway;
+use Illuminate\Http\Request;
 
-    // Validation rules for the request data  
-    public function rules()  
-    {  
-        return [  
-            'title'   => 'required|string|max:255',  
-            'content' => 'required|string',  
-            'tags'    => 'array',  
-            'tags.*'  => 'integer|exists:tags,id',  
-        ];  
-    }  
+class OrderController extends Controller
+{
+    protected $paymentGateway;
 
-    // Custom error messages (optional)  
-    public function messages()  
-    {  
-        return [  
-            'title.required' => 'A title is required for the post.',  
-            'content.required' => 'Please provide the post content.',  
-        ];  
-    }  
-}  
+    // The container injects the concrete StripePaymentGateway implementation here
+    public function __construct(PaymentGateway $paymentGateway)
+    {
+        $this->paymentGateway = $paymentGateway;
+    }
 
-Usage in a controller (app/Http/Controllers/PostController.php):  
-<?php  
-namespace App\Http\Controllers;  
+    public function store(Request $request)
+    {
+        // Use the injected payment gateway to process a payment
+        $this->paymentGateway->charge($request->input('amount'), $request->input('token'));
 
-use App\Http\Requests\StorePostRequest;  
-use App\Models\Post;  
-
-class PostController extends Controller  
-{  
-    // Store a new blog post using the custom request for validation  
-    public function store(StorePostRequest $request)  
-    {  
-        // Validation has already passed at this point  
-
-        // Retrieve only the validated fields  
-        $data = $request->validated();  
-
-        // Create the post and associate tags if provided  
-        $post = Post::create([  
-            'title'   => $data['title'],  
-            'content' => $data['content'],  
-            'user_id' => auth()->id(),  
-        ]);  
-
-        if (!empty($data['tags'])) {  
-            $post->tags()->attach($data['tags']); // assuming a many‑to‑many relation  
-        }  
-
-        return response()->json([  
-            'message' => 'Post created successfully.',  
-            'post'    => $post,  
-        ], 201);  
-    }  
-}  
+        // Additional order logic...
+        return response()->json(['status' => 'success']);
+    }
+}
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTEs) and Recursive Queries
+Topic: MySQL Stored Procedures  
 
 Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement.  
-CTEs improve readability by allowing you to break complex queries into logical building blocks.  
-When the CTE is defined with the RECURSIVE keyword, it can refer to itself, enabling hierarchical or iterative data processing.  
-Recursive CTEs consist of an anchor member (the base case) and a recursive member that repeatedly references the CTE until a termination condition is met.  
-They are especially useful for traversing tree structures such as organizational charts, category hierarchies, or graph paths.  
+A stored procedure is a pre‑compiled set of SQL statements stored in the database server.  
+It can accept input parameters, return output parameters, and encapsulate complex logic.  
+Using procedures reduces client‑side code duplication and improves performance by avoiding repeated parsing.  
+Procedures support control‑flow constructs such as IF, LOOP, and CASE, enabling procedural programming within MySQL.  
+They are invoked with CALL and can be granted specific execution rights for security.  
 
-Code example:  
--- Create a simple table to store an employee hierarchy  
-CREATE TABLE employees (  
-    emp_id INT PRIMARY KEY,  
-    emp_name VARCHAR(50),  
-    manager_id INT NULL   -- NULL for top‑level manager  
-);  
+Example (creates a procedure that inserts a new employee and returns the generated ID):  
 
--- Insert sample data  
-INSERT INTO employees (emp_id, emp_name, manager_id) VALUES  
-(1, 'Alice', NULL),   -- CEO  
-(2, 'Bob', 1),        -- reports to Alice  
-(3, 'Carol', 1),      -- reports to Alice  
-(4, 'Dave', 2),       -- reports to Bob  
-(5, 'Eve', 2),        -- reports to Bob  
-(6, 'Frank', 3);      -- reports to Carol  
+DELIMITER $$  
+CREATE PROCEDURE AddEmployee(  
+    IN p_name VARCHAR(100),  
+    IN p_department_id INT,  
+    OUT p_new_id INT)  
+BEGIN  
+    -- Insert the new employee record  
+    INSERT INTO employees (name, department_id, hired_date)  
+    VALUES (p_name, p_department_id, NOW());  
+  
+    -- Retrieve the auto‑generated primary key  
+    SET p_new_id = LAST_INSERT_ID();  
+END $$  
+DELIMITER ;  
 
--- Recursive CTE to list each employee together with the chain of managers above them  
-WITH RECURSIVE manager_path AS (  
-    -- Anchor member: start with each employee and their immediate manager  
-    SELECT emp_id, emp_name, manager_id, CAST(emp_name AS CHAR(200)) AS path  
-    FROM employees  
-    WHERE manager_id IS NULL   -- top‑level managers (e.g., CEO)  
-
-    UNION ALL  
-
-    -- Recursive member: join employees to the previous level to build the path  
-    SELECT e.emp_id, e.emp_name, e.manager_id,  
-           CONCAT(mp.path, ' -> ', e.emp_name) AS path  
-    FROM employees e  
-    JOIN manager_path mp ON e.manager_id = mp.emp_id  
-)  
-SELECT emp_id, emp_name, path  
-FROM manager_path  
-ORDER BY emp_id;   -- Result shows each employee with the full reporting chain  
+-- Call the procedure and capture the output ID  
+SET @newEmpId = 0;  
+CALL AddEmployee('Alice Johnson', 3, @newEmpId);  
+SELECT @newEmpId AS GeneratedEmployeeID;  
 */
 
 /* JavaScript
-Topic: Closures in JavaScript
+Topic: Promises and async/await  
 
-Explanation:
-A closure is created when an inner function accesses variables from its outer (enclosing) function after the outer function has finished executing. This allows the inner function to retain a reference to the outer scope’s variables, preserving their values between calls. Closures are useful for data encapsulation, creating private state, and implementing function factories. Because the variables are kept alive by the closure, they are not garbage‑collected until the inner function itself becomes unreachable. Understanding closures helps avoid common pitfalls such as unintended sharing of mutable state in loops.
+Explanation:  
+Promises are objects that represent the eventual completion or failure of an asynchronous operation. They have three states—pending, fulfilled, and rejected—and provide .then, .catch, and .finally methods to handle outcomes. The async/await syntax builds on promises, allowing asynchronous code to be written in a synchronous style, which improves readability. An async function automatically returns a promise, and the await keyword pauses execution until the awaited promise settles. Proper error handling with try / catch inside async functions ensures that rejections are caught without breaking the call stack.  
 
-Code Example:
-function makeCounter(start) {
-    let count = start;                 // count is private to makeCounter
-    return function() {
-        count += 1;                    // inner function forms a closure over count
-        return count;
-    };
-}
+Code example:  
 
-const counterA = makeCounter(0);       // creates a new closure with its own count
-console.log(counterA());               // 1
-console.log(counterA());               // 2
+function fetchData(url) {  
+    // Return a promise that resolves after a simulated network delay  
+    return new Promise((resolve, reject) => {  
+        setTimeout(() => {  
+            // Simulate a successful response with JSON data  
+            const data = { message: "Data loaded from " + url };  
+            resolve(data);  
+        }, 1000); // 1‑second delay  
+    });  
+}  
 
-const counterB = makeCounter(10);      // separate closure, independent count
-console.log(counterB());               // 11
-console.log(counterA());               // 3  (counterA’s count continues independently)
+async function loadAndProcess() {  
+    try {  
+        // Await the promise returned by fetchData; execution pauses here  
+        const result = await fetchData("https://api.example.com/resource");  
+        // Process the result after it has been retrieved  
+        console.log("Success:", result.message);  
+    } catch (error) {  
+        // Handle any rejection from fetchData or other errors  
+        console.error("Error:", error);  
+    } finally {  
+        // This block runs regardless of success or failure  
+        console.log("Operation completed.");  
+    }  
+}  
+
+// Invoke the async function  
+loadAndProcess();
 */
 
 /* AI
-Topic: Prompt Engineering with Few‑Shot Learning for Text Classification
+Topic: Chain‑of‑Thought Prompt Engineering for Large Language Models  
 
 Explanation:  
-Few‑shot prompting lets a language model learn a task from just a handful of examples embedded in the prompt. By carefully formatting the examples and the query, you can guide the model to produce accurate classifications without any fine‑tuning. This approach is especially useful when labeled data is scarce or when rapid prototyping is needed. The prompt typically includes a clear instruction, several input‑label pairs (the "shots"), and finally the new input whose label the model must predict. Adjusting the number of shots, the phrasing of the instruction, and the delimiters can have a big impact on performance. Below is a Python example using the OpenAI Chat Completion API to classify sentiment with three few‑shot examples.
+Chain‑of‑Thought (CoT) prompting guides a model to generate step‑by‑step reasoning before delivering the final answer, improving accuracy on complex tasks. By explicitly requesting intermediate steps, the model can decompose problems, reducing hallucinations and logical errors. Effective CoT prompts include clear instructions, examples that show the reasoning process, and a delimiter that signals the answer. This technique works across many domains such as math, coding, and commonsense reasoning. When combined with temperature control, CoT can produce deterministic yet thoughtful outputs.
 
-Code example (Python, requires openai package and a valid API key):
+Code example (Python, OpenAI API):
+
 import os
-import openai
+import json
+from openai import OpenAI
 
-# Set your OpenAI API key (ensure it is kept secret)
-openai.api_key = os.getenv("OPENAI_API_KEY")
+# Initialize client – assumes OPENAI_API_KEY is set in environment
+client = OpenAI()
 
-def classify_sentiment(text):
-    # Construct a few‑shot prompt with instruction, examples, and the target input
-    prompt = """You are an assistant that classifies the sentiment of a sentence as Positive, Negative, or Neutral.
-
-Example 1:
-Sentence: I love the new design of this app!
-Sentiment: Positive
-
-Example 2:
-Sentence: The update broke my workflow and caused many errors.
-Sentiment: Negative
-
-Example 3:
-Sentence: The app works as expected.
-Sentiment: Neutral
-
-Now classify the following sentence:
-Sentence: {} 
-Sentiment:""".format(text)
-
-    # Call the chat completion endpoint with the prompt as a user message
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",               # choose a suitable model
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,                   # deterministic output for classification
-        max_tokens=10                      # limit response length
+def chain_of_thought(question: str) -> str:
+    """
+    Sends a CoT‑styled prompt to the model and returns the final answer.
+    The prompt includes an instruction, a few examples, and the user question.
+    """
+    # Prompt template with instruction and examples
+    prompt = (
+        "You are a helpful assistant that solves problems by reasoning step by step.\n\n"
+        "Example 1:\n"
+        "Q: If a train travels 60 miles per hour for 3 hours, how far does it go?\n"
+        "A: Step 1: Multiply speed by time.\n"
+        "   60 miles/hour * 3 hours = 180 miles.\n"
+        "   Final answer: 180 miles.\n\n"
+        "Example 2:\n"
+        "Q: What is the sum of the first five prime numbers?\n"
+        "A: Step 1: List the first five primes: 2, 3, 5, 7, 11.\n"
+        "   Step 2: Add them together.\n"
+        "   2+3+5+7+11 = 28.\n"
+        "   Final answer: 28.\n\n"
+        f"Now solve the following problem:\nQ: {question}\nA:"
     )
-    # Extract and clean the model's answer
-    sentiment = response.choices[0].message.content.strip()
-    return sentiment
+
+    # Call the model
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.0,          # deterministic reasoning
+        max_tokens=300
+    )
+
+    # Extract the text portion of the response
+    answer = response.choices[0].message.content.strip()
+    # The final answer is usually after the phrase "Final answer:"
+    if "Final answer:" in answer:
+        return answer.split("Final answer:")[1].strip()
+    return answer
 
 # Example usage
-sample = "I'm not sure if this feature is useful."
-print("Input:", sample)
-print("Predicted Sentiment:", classify_sentiment(sample))
+question = "A rectangle has width 7 cm and height 9 cm. What is its area?"
+print("Question:", question)
+print("Answer:", chain_of_thought(question))
 */
 
