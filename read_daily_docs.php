@@ -1,206 +1,221 @@
 <?php
-// 2026-11-26 09:50:03
+// 2026-11-27 09:58:22
 
 /* PHP
-PHP Topic: Traits
+PHP PDO Prepared Statements
 
-Explanation:
-Traits are a mechanism for code reuse in single inheritance languages like PHP.  
-They allow you to compose classes from reusable sets of methods without using inheritance.  
-A trait can contain methods and properties, and a class can use multiple traits.  
-If a class uses two traits that have methods with the same name, you must resolve the conflict.  
-Traits are useful for sharing common functionality across unrelated class hierarchies.
-
-Code Example (with comments):
+Prepared statements in PDO allow you to safely execute SQL queries with user‑supplied data. The query is compiled once by the database, and placeholders are used for the actual values, which prevents SQL injection. You bind parameters to the placeholders, specifying the data type for each. This method also improves performance when the same statement is run multiple times with different values. PDO supports both named and positional placeholders, giving flexibility in how you write your queries.
 
 <?php
-// Define a trait that provides logging functionality
-trait Logger {
-    // Log a message with a timestamp
-    public function log(string $message): void {
-        echo "[" . date('Y-m-d H:i:s') . "] " . $message . PHP_EOL;
-    }
-}
+// Create a new PDO instance (replace DSN, username, and password with your own)
+$pdo = new PDO('mysql:host=localhost;dbname=testdb;charset=utf8mb4', 'dbuser', 'dbpass');
+// Enable exceptions for error handling
+$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-// Another trait that provides a unique identifier
-trait HasId {
-    private int $id;
+// Define an INSERT statement with named placeholders
+$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)";
 
-    // Set the identifier
-    public function setId(int $id): void {
-        $this->id = $id;
-    }
+// Prepare the statement (the SQL is sent to the server for parsing)
+$stmt = $pdo->prepare($sql);
 
-    // Get the identifier
-    public function getId(): int {
-        return $this->id;
-    }
-}
+// Bind values to the placeholders
+$stmt->bindValue(':username',  $userName, PDO::PARAM_STR);
+$stmt->bindValue(':email',     $userEmail, PDO::PARAM_STR);
+$stmt->bindValue(':created_at', date('Y-m-d H:i:s'), PDO::PARAM_STR);
 
-// A class that uses both traits
-class User {
-    use Logger, HasId; // Resolve any method name conflicts here if needed
+// Execute the prepared statement
+$stmt->execute();
 
-    private string $name;
-
-    public function __construct(string $name, int $id) {
-        $this->name = $name;
-        $this->setId($id); // Method from HasId trait
-        $this->log("User created: {$this->name} (ID: {$this->getId()})"); // Method from Logger trait
-    }
-}
-
-// Usage
-$user = new User('Alice', 101);
-$user->log('This is a custom log message.');
+// Check how many rows were inserted
+echo $stmt->rowCount() . " row(s) inserted.";
 ?>
 */
 
 /* Laravel
-Topic: Laravel Queues and Jobs  
+Topic: Laravel Service Container & Dependency Injection  
 
 Explanation:  
-Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or calling external APIs so they run in the background. By pushing a job onto a queue, the main request can return quickly, improving user experience and reducing request latency. Laravel provides a unified API for multiple queue drivers (database, Redis, SQS, etc.), making it easy to switch back‑ends without changing your job code. Each job is a self‑contained class that receives its data via the constructor and defines a handle method where the task logic lives. Workers listen to the queue and process jobs one at a time, handling retries and failures automatically.
+The Service Container is Laravel’s powerful tool for managing class dependencies and performing dependency injection. It resolves classes automatically, injecting required dependencies into constructors or methods. By binding an interface to a concrete implementation, you can swap implementations without changing the consuming code. This promotes loose coupling and makes testing easier through mocking. The container is accessed via the app() helper or through type‑hinting in controllers, jobs, listeners, etc.  
 
-Code example with comments:
+Code example (plain text, with comments):  
 
-<?php
-namespace App\Jobs;
+// Define an interface for a payment gateway
+interface PaymentGateway {
+    public function charge($amount);
+}
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use App\Mail\WelcomeMail;
-use Mail;
-
-class SendWelcomeEmail implements ShouldQueue
-{
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    // Data that will be serialized and passed to the job when it runs
-    protected $user;
-
-    // Constructor receives the user instance when the job is dispatched
-    public function __construct($user)
-    {
-        $this->user = $user;
-    }
-
-    // The logic that will be executed by the queue worker
-    public function handle()
-    {
-        // Build the email and send it using the Mail facade
-        Mail::to($this->user->email)->send(new WelcomeMail($this->user));
+// Concrete implementation using Stripe
+class StripeGateway implements PaymentGateway {
+    public function charge($amount) {
+        // Here you would call Stripe's API to process the payment
+        // For demonstration we just return a success message
+        return "Charged \$$amount via Stripe.";
     }
 }
 
-// Dispatching the job from a controller or service
-// This line pushes the job onto the default queue connection
-SendWelcomeEmail::dispatch($user);
+// Bind the interface to the implementation in a service provider
+class AppServiceProvider extends ServiceProvider {
+    public function register() {
+        // When PaymentGateway is requested, resolve it to StripeGateway
+        $this->app->bind(PaymentGateway::class, StripeGateway::class);
+    }
+}
 
-?>
+// Controller that receives the dependency via constructor injection
+class OrderController extends Controller {
+    protected $paymentGateway;
+
+    // Laravel automatically injects the bound implementation
+    public function __construct(PaymentGateway $paymentGateway) {
+        $this->paymentGateway = $paymentGateway;
+    }
+
+    public function store(Request $request) {
+        $amount = $request->input('amount');
+        // Use the injected service to charge the amount
+        $result = $this->paymentGateway->charge($amount);
+        return response()->json(['message' => $result]);
+    }
+}
 */
 
 /* MySQL
-Topic: MySQL Stored Procedures with IN, OUT, and INOUT Parameters  
+Topic: Common Table Expressions (CTE) and Recursive Queries
 
 Explanation:  
-A stored procedure is a reusable set of SQL statements that runs on the MySQL server.  
-It can accept input values (IN), return output values (OUT), or both (INOUT).  
-Using parameters makes the procedure flexible and allows you to encapsulate business logic.  
-Procedures are compiled once, so subsequent calls are faster than sending raw SQL each time.  
-They also help enforce security by limiting direct table access for the calling user.  
+A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It improves readability by allowing you to break complex queries into logical building blocks. CTEs are defined using the WITH clause and can be recursive, enabling hierarchical data traversal such as organizational charts or tree structures. Recursive CTEs consist of an anchor member (the base case) and a recursive member that references the CTE itself. They are evaluated iteratively until the result set stops growing, making them powerful for depth‑first or breadth‑first traversals.
 
-Code Example (with comments):  
-
-DELIMITER $$  
-CREATE PROCEDURE GetEmployeeSalary(  
-    IN emp_id INT,            -- input: employee identifier  
-    OUT emp_name VARCHAR(50),-- output: employee name returned to caller  
-    INOUT total_bonus DECIMAL(10,2) -- input-output: initial bonus, modified inside procedure  
-)  
-BEGIN  
-    -- Retrieve employee name and base salary  
-    SELECT name, salary INTO emp_name, total_bonus  
+Code Example:
+WITH RECURSIVE OrgChart AS (  
+    -- Anchor member: start with the top‑level manager (e.g., employee_id = 1)  
+    SELECT employee_id, manager_id, employee_name, 1 AS level  
     FROM employees  
-    WHERE id = emp_id;  
+    WHERE manager_id IS NULL AND employee_id = 1  
 
-    -- Add a performance bonus of 10% to the total_bonus (which currently holds base salary)  
-    SET total_bonus = total_bonus * 1.10;  
-END $$  
-DELIMITER ;  
+    UNION ALL  
 
--- Example of calling the procedure  
-SET @bonus = 0;  
-CALL GetEmployeeSalary(101, @empName, @bonus);  
-SELECT @empName AS EmployeeName, @bonus AS SalaryWithBonus;
+    -- Recursive member: find direct reports of the current level  
+    SELECT e.employee_id, e.manager_id, e.employee_name, oc.level + 1  
+    FROM employees e  
+    INNER JOIN OrgChart oc ON e.manager_id = oc.employee_id  
+)  
+SELECT employee_id, manager_id, employee_name, level  
+FROM OrgChart  
+ORDER BY level, manager_id;  
 */
 
 /* JavaScript
-Topic: JavaScript Closures
+Topic: Async Generators and Asynchronous Iteration
 
-Explanation:
-A closure is a function that retains access to its lexical environment even after the outer function has finished executing.  
-It allows the inner function to read variables defined in the outer scope, preserving state between calls.  
-Closures are created every time a function is defined, but they become especially useful for data privacy and function factories.  
-Understanding closures helps avoid common pitfalls like unintentionally sharing mutable state.  
-They are a core concept for asynchronous programming, module patterns, and functional composition in JavaScript.  
+Explanation:  
+Async generators combine the power of generators with the ability to pause for asynchronous operations. They are declared with the “async function*” syntax and yield promises that are awaited by the consumer. This pattern is ideal for processing streams of data that arrive over time, such as reading lines from a file or handling paginated API responses. The consumer uses a “for await…of” loop, which automatically waits for each yielded value before proceeding. Async generators keep the code readable and avoid deep nesting of callbacks or promise chains.
 
-Code example with comments:
-function outer(a) {               // outer function receives a parameter a
-    let b = 2;                    // b is a local variable in the outer scope
-    return function inner(c) {    // inner function forms a closure over a and b
-        // this function can still access a and b even after outer returns
-        return a + b + c;         // compute sum using variables from both scopes
-    };
-}
-let fn = outer(5);                // call outer, creating a closure with a = 5
-console.log(fn(3));               // invoke inner with c = 3, prints 10 (5+2+3)  
+Code example with comments:  
+async function* fetchPages(url) {  
+    // Start with the first page URL  
+    let nextUrl = url;  
+    while (nextUrl) {  
+        // Wait for the HTTP request to complete  
+        const response = await fetch(nextUrl);  
+        const data = await response.json();  
+        // Yield the items from the current page to the caller  
+        yield data.items;  
+        // Determine the URL of the next page, if any  
+        nextUrl = data.nextPageUrl;  
+    }  
+}  
+
+// Consumer of the async generator  
+(async () => {  
+    // Loop over each batch of items as they become available  
+    for await (const items of fetchPages('https://api.example.com/data')) {  
+        // Process each batch synchronously inside the loop  
+        console.log('Received batch of', items.length, 'items');  
+        // Example: handle each item individually  
+        items.forEach(item => console.log(item.id, item.name));  
+    }  
+    console.log('All pages have been processed');  
+})();
 */
 
 /* AI
-Topic: Few‑Shot Prompt Engineering with the OpenAI Chat Completion API
+Topic: Simple Feedforward Neural Network with PyTorch  
 
-Explanation:
-Few‑shot prompting demonstrates the model’s ability to learn a new task from just a handful of examples supplied in the prompt. By clearly formatting input‑output pairs and then presenting a new query, the model can infer the pattern and generate accurate responses. This technique works well for classification, transformation, and extraction tasks without any fine‑tuning. The key is to keep examples concise, consistent, and to use delimiters that the model can recognize. Proper prompt design can dramatically improve reliability and reduce token usage compared to longer zero‑shot prompts.
+Explanation:  
+A feedforward neural network (also called a multilayer perceptron) consists of an input layer, one or more hidden layers, and an output layer. Each layer applies a linear transformation followed by a non‑linear activation, allowing the model to learn complex mappings from inputs to targets. PyTorch provides a clean, modular API to define layers, loss functions, and optimizers, making experimentation fast. In this example we build a network to classify the Iris dataset, a classic small‑scale classification problem. The code demonstrates dataset loading, model definition, training loop, and evaluation in just a few lines.
 
-Code example (Python, using the openai library):
-import openai
+Code example (Python with PyTorch):  
 
-# Set your OpenAI API key
-openai.api_key = "YOUR_API_KEY"
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import TensorDataset, DataLoader
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 
-# Define a few‑shot prompt with clear delimiters
-examples = [
-    {"input": "Translate to French: Hello, how are you?", "output": "Bonjour, comment ça va ?"},
-    {"input": "Translate to French: Good night!", "output": "Bonne nuit !"},
-]
+# Load and preprocess the Iris data
+iris = load_iris()
+X = iris['data'].astype('float32')
+y = iris['target'].astype('int64')
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Build the message list for the chat API
-messages = [
-    {"role": "system", "content": "You are a helpful assistant that translates English sentences to French."},
-]
+# Standardize features for better training stability
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
 
-# Append the demonstration examples as user‑assistant turns
-for ex in examples:
-    messages.append({"role": "user", "content": ex["input"]})
-    messages.append({"role": "assistant", "content": ex["output"]})
+# Convert to PyTorch tensors and create DataLoaders
+train_dataset = TensorDataset(torch.tensor(X_train), torch.tensor(y_train))
+test_dataset = TensorDataset(torch.tensor(X_test), torch.tensor(y_test))
+train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
 
-# New query that the model should answer using the learned pattern
-new_query = "Translate to French: See you tomorrow."
-messages.append({"role": "user", "content": new_query})
+# Define a simple feedforward network
+class SimpleMLP(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super(SimpleMLP, self).__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)   # First linear layer
+        self.relu = nn.ReLU()                         # Non‑linear activation
+        self.fc2 = nn.Linear(hidden_dim, output_dim) # Output layer
 
-# Call the Chat Completion endpoint
-response = openai.ChatCompletion.create(
-    model="gpt-4o-mini",
-    messages=messages,
-    temperature=0.0  # deterministic output for translation tasks
-)
+    def forward(self, x):
+        out = self.fc1(x)
+        out = self.relu(out)
+        out = self.fc2(out)
+        return out
 
-# Extract and print the model's translation
-translation = response.choices[0].message.content.strip()
-print("Translation:", translation)   # Expected: "À demain."  
+model = SimpleMLP(input_dim=4, hidden_dim=16, output_dim=3)
+
+# Loss function and optimizer
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.01)
+
+# Training loop
+num_epochs = 50
+for epoch in range(num_epochs):
+    model.train()
+    for batch_X, batch_y in train_loader:
+        optimizer.zero_grad()               # Clear gradients
+        outputs = model(batch_X)            # Forward pass
+        loss = criterion(outputs, batch_y)  # Compute loss
+        loss.backward()                     # Backward pass
+        optimizer.step()                    # Update weights
+    # Optional: print loss every 10 epochs
+    if (epoch+1) % 10 == 0:
+        print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
+
+# Evaluation on test set
+model.eval()
+correct = 0
+total = 0
+with torch.no_grad():
+    for batch_X, batch_y in test_loader:
+        outputs = model(batch_X)
+        _, predicted = torch.max(outputs, 1)
+        total += batch_y.size(0)
+        correct += (predicted == batch_y).sum().item()
+accuracy = 100 * correct / total
+print(f'Test Accuracy: {accuracy:.2f}%')
 */
 
