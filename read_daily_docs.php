@@ -1,221 +1,199 @@
 <?php
-// 2026-11-27 09:58:22
+// 2026-11-28 09:10:53
 
 /* PHP
-PHP PDO Prepared Statements
+PHP Generators
 
-Prepared statements in PDO allow you to safely execute SQL queries with user‑supplied data. The query is compiled once by the database, and placeholders are used for the actual values, which prevents SQL injection. You bind parameters to the placeholders, specifying the data type for each. This method also improves performance when the same statement is run multiple times with different values. PDO supports both named and positional placeholders, giving flexibility in how you write your queries.
+Generators allow a function to return values one at a time, pausing its execution between each yield. This is useful for handling large data sets without loading everything into memory. They are implemented with the `yield` keyword, turning a regular function into an iterator. Generators improve performance and reduce memory consumption, especially in loops that process files, database rows, or API streams. They can also be used to create infinite sequences safely.
 
 <?php
-// Create a new PDO instance (replace DSN, username, and password with your own)
-$pdo = new PDO('mysql:host=localhost;dbname=testdb;charset=utf8mb4', 'dbuser', 'dbpass');
-// Enable exceptions for error handling
-$pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+// Example: a generator that yields the first n Fibonacci numbers
+function fibonacciGenerator(int $limit): Generator
+{
+    $a = 0;          // first number
+    $b = 1;          // second number
+    $count = 0;
+    while ($count < $limit) {
+        yield $a;    // pause and return the current value
+        $next = $a + $b;
+        $a = $b;
+        $b = $next;
+        $count++;
+    }
+}
 
-// Define an INSERT statement with named placeholders
-$sql = "INSERT INTO users (username, email, created_at) VALUES (:username, :email, :created_at)";
-
-// Prepare the statement (the SQL is sent to the server for parsing)
-$stmt = $pdo->prepare($sql);
-
-// Bind values to the placeholders
-$stmt->bindValue(':username',  $userName, PDO::PARAM_STR);
-$stmt->bindValue(':email',     $userEmail, PDO::PARAM_STR);
-$stmt->bindValue(':created_at', date('Y-m-d H:i:s'), PDO::PARAM_STR);
-
-// Execute the prepared statement
-$stmt->execute();
-
-// Check how many rows were inserted
-echo $stmt->rowCount() . " row(s) inserted.";
+// Use the generator in a foreach loop
+foreach (fibonacciGenerator(10) as $index => $value) {
+    echo "Fibonacci #{$index}: {$value}\n";
+}
 ?>
 */
 
 /* Laravel
-Topic: Laravel Service Container & Dependency Injection  
+Topic: Laravel Queues and Jobs
 
 Explanation:  
-The Service Container is Laravel’s powerful tool for managing class dependencies and performing dependency injection. It resolves classes automatically, injecting required dependencies into constructors or methods. By binding an interface to a concrete implementation, you can swap implementations without changing the consuming code. This promotes loose coupling and makes testing easier through mocking. The container is accessed via the app() helper or through type‑hinting in controllers, jobs, listeners, etc.  
+Laravel queues allow you to defer time‑consuming tasks such as sending emails, processing images, or calling external APIs to a background process. By pushing jobs onto a queue, the main request can respond quickly while workers handle the heavy lifting asynchronously. Laravel provides a unified API for multiple queue back‑ends like database, Redis, Amazon SQS, and others. Jobs are simple PHP classes that encapsulate the logic to be performed, and they can be retried automatically if they fail. Workers are started with an Artisan command and listen for new jobs, executing them in the order they are received.
 
-Code example (plain text, with comments):  
+Code example (Job class and dispatch):
 
-// Define an interface for a payment gateway
-interface PaymentGateway {
-    public function charge($amount);
-}
+<?php
+namespace App\Jobs;
 
-// Concrete implementation using Stripe
-class StripeGateway implements PaymentGateway {
-    public function charge($amount) {
-        // Here you would call Stripe's API to process the payment
-        // For demonstration we just return a success message
-        return "Charged \$$amount via Stripe.";
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Bus\Dispatchable;
+use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\SerializesModels;
+use App\Mail\WelcomeMail;
+use Mail;
+
+/* This job sends a welcome email to a newly registered user. */
+class SendWelcomeEmail implements ShouldQueue
+{
+    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
+
+    public $user;   // The user instance that will receive the email
+
+    // Constructor receives the user object when the job is dispatched
+    public function __construct($user)
+    {
+        $this->user = $user;
+    }
+
+    // The handle method contains the logic that will run in the background worker
+    public function handle()
+    {
+        // Build and send the email; this runs outside the HTTP request cycle
+        Mail::to($this->user->email)->send(new WelcomeMail($this->user));
     }
 }
 
-// Bind the interface to the implementation in a service provider
-class AppServiceProvider extends ServiceProvider {
-    public function register() {
-        // When PaymentGateway is requested, resolve it to StripeGateway
-        $this->app->bind(PaymentGateway::class, StripeGateway::class);
-    }
+/* Dispatching the job from a controller or service */
+use App\Jobs\SendWelcomeEmail;
+
+public function register(Request $request)
+{
+    // Validation and user creation logic...
+    $user = User::create($request->only(['name', 'email', 'password']));
+
+    // Push the email sending job onto the default queue
+    SendWelcomeEmail::dispatch($user);
+
+    return response()->json(['message' => 'User registered, welcome email queued.']);
 }
 
-// Controller that receives the dependency via constructor injection
-class OrderController extends Controller {
-    protected $paymentGateway;
-
-    // Laravel automatically injects the bound implementation
-    public function __construct(PaymentGateway $paymentGateway) {
-        $this->paymentGateway = $paymentGateway;
-    }
-
-    public function store(Request $request) {
-        $amount = $request->input('amount');
-        // Use the injected service to charge the amount
-        $result = $this->paymentGateway->charge($amount);
-        return response()->json(['message' => $result]);
-    }
-}
+/* Starting a worker (run this in the terminal) */
+# php artisan queue:work --tries=3   // The worker will process jobs and retry up to 3 times on failure.
 */
 
 /* MySQL
-Topic: Common Table Expressions (CTE) and Recursive Queries
+Topic: Common Table Expressions (CTEs) and Recursive Queries
 
 Explanation:  
-A Common Table Expression (CTE) is a temporary result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. It improves readability by allowing you to break complex queries into logical building blocks. CTEs are defined using the WITH clause and can be recursive, enabling hierarchical data traversal such as organizational charts or tree structures. Recursive CTEs consist of an anchor member (the base case) and a recursive member that references the CTE itself. They are evaluated iteratively until the result set stops growing, making them powerful for depth‑first or breadth‑first traversals.
+A Common Table Expression (CTE) is a temporary named result set that you can reference within a SELECT, INSERT, UPDATE, or DELETE statement. CTEs improve readability by allowing you to break complex queries into logical building blocks. They are defined using the WITH clause and exist only for the duration of the statement. When a CTE references itself, it becomes a recursive CTE, which is useful for hierarchical data such as organizational charts or tree structures. Recursive CTEs consist of an anchor member (the base case) and a recursive member that repeatedly references the CTE until a termination condition is met.
 
-Code Example:
-WITH RECURSIVE OrgChart AS (  
-    -- Anchor member: start with the top‑level manager (e.g., employee_id = 1)  
-    SELECT employee_id, manager_id, employee_name, 1 AS level  
-    FROM employees  
-    WHERE manager_id IS NULL AND employee_id = 1  
+Code example with comments:
 
-    UNION ALL  
+-- Define a recursive CTE to list an employee hierarchy
+WITH RECURSIVE EmployeeHierarchy AS (
+    -- Anchor member: start with the top‑level manager (e.g., employee_id = 1)
+    SELECT 
+        employee_id,
+        manager_id,
+        employee_name,
+        1 AS level
+    FROM employees
+    WHERE employee_id = 1
 
-    -- Recursive member: find direct reports of the current level  
-    SELECT e.employee_id, e.manager_id, e.employee_name, oc.level + 1  
-    FROM employees e  
-    INNER JOIN OrgChart oc ON e.manager_id = oc.employee_id  
-)  
-SELECT employee_id, manager_id, employee_name, level  
-FROM OrgChart  
-ORDER BY level, manager_id;  
+    UNION ALL
+
+    -- Recursive member: join each employee to their direct reports
+    SELECT 
+        e.employee_id,
+        e.manager_id,
+        e.employee_name,
+        eh.level + 1 AS level
+    FROM employees e
+    INNER JOIN EmployeeHierarchy eh
+        ON e.manager_id = eh.employee_id
+)
+-- Final query: retrieve the full hierarchy ordered by level
+SELECT 
+    employee_id,
+    manager_id,
+    employee_name,
+    level
+FROM EmployeeHierarchy
+ORDER BY level, employee_id;
 */
 
 /* JavaScript
-Topic: Async Generators and Asynchronous Iteration
+Topic: Event Loop, Call Stack, and Microtasks  
 
 Explanation:  
-Async generators combine the power of generators with the ability to pause for asynchronous operations. They are declared with the “async function*” syntax and yield promises that are awaited by the consumer. This pattern is ideal for processing streams of data that arrive over time, such as reading lines from a file or handling paginated API responses. The consumer uses a “for await…of” loop, which automatically waits for each yielded value before proceeding. Async generators keep the code readable and avoid deep nesting of callbacks or promise chains.
+- JavaScript runs on a single thread, processing code line‑by‑line using the call stack.  
+- The event loop continuously checks the call stack; when it’s empty, it pulls tasks from the macro‑task queue (e.g., setTimeout, I/O callbacks).  
+- Promises create microtasks, which are placed in a separate microtask queue that is processed **after** each macro‑task but **before** the next macro‑task.  
+- This ordering guarantees that promise callbacks run before timers scheduled for the same tick, leading to subtle timing differences.  
+- Understanding this model helps avoid bugs related to asynchronous code execution and enables you to write more predictable JavaScript.  
 
-Code example with comments:  
-async function* fetchPages(url) {  
-    // Start with the first page URL  
-    let nextUrl = url;  
-    while (nextUrl) {  
-        // Wait for the HTTP request to complete  
-        const response = await fetch(nextUrl);  
-        const data = await response.json();  
-        // Yield the items from the current page to the caller  
-        yield data.items;  
-        // Determine the URL of the next page, if any  
-        nextUrl = data.nextPageUrl;  
-    }  
+Code example (with comments):  
+
+function log(value) {  
+    console.log(value);  
 }  
 
-// Consumer of the async generator  
-(async () => {  
-    // Loop over each batch of items as they become available  
-    for await (const items of fetchPages('https://api.example.com/data')) {  
-        // Process each batch synchronously inside the loop  
-        console.log('Received batch of', items.length, 'items');  
-        // Example: handle each item individually  
-        items.forEach(item => console.log(item.id, item.name));  
-    }  
-    console.log('All pages have been processed');  
-})();
+log('Start');                     // 1) Synchronous, runs immediately  
+
+setTimeout(() => {                // Macro‑task, runs after current stack & microtasks  
+    log('Timeout');               // Executes later  
+}, 0);  
+
+Promise.resolve()                  // Creates a microtask  
+    .then(() => {                 // 2) Microtask, runs after current stack, before setTimeout  
+        log('Promise then 1');  
+    })  
+    .then(() => {                 // 3) Another microtask, runs after previous then  
+        log('Promise then 2');  
+    });  
+
+log('End');                       // 4) Synchronous, runs before any async callbacks  
 */
 
 /* AI
-Topic: Simple Feedforward Neural Network with PyTorch  
+Topic: Few‑Shot Prompt Engineering with OpenAI’s Chat Completion API  
 
 Explanation:  
-A feedforward neural network (also called a multilayer perceptron) consists of an input layer, one or more hidden layers, and an output layer. Each layer applies a linear transformation followed by a non‑linear activation, allowing the model to learn complex mappings from inputs to targets. PyTorch provides a clean, modular API to define layers, loss functions, and optimizers, making experimentation fast. In this example we build a network to classify the Iris dataset, a classic small‑scale classification problem. The code demonstrates dataset loading, model definition, training loop, and evaluation in just a few lines.
+Few‑shot prompting provides the model with a short set of example interactions that illustrate the desired behavior, allowing you to shape outputs without fine‑tuning. By inserting a handful of input‑output pairs into the system message or the beginning of the conversation, you give the model a clear pattern to follow. This technique works well for tasks such as formatting JSON, extracting entities, or converting natural language to code. The examples should be concise, representative, and cover edge cases you expect the model to handle. Adjust the temperature to a low value (e.g., 0.2) to encourage deterministic, pattern‑matching responses.
 
-Code example (Python with PyTorch):  
+Code example (Python, using the OpenAI library):
 
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from torch.utils.data import TensorDataset, DataLoader
-from sklearn.datasets import load_iris
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
+import os
+import openai
 
-# Load and preprocess the Iris data
-iris = load_iris()
-X = iris['data'].astype('float32')
-y = iris['target'].astype('int64')
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# Load your API key from an environment variable
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# Standardize features for better training stability
-scaler = StandardScaler()
-X_train = scaler.fit_transform(X_train)
-X_test = scaler.transform(X_test)
+# Define a few‑shot prompt: system message + two example user‑assistant pairs
+messages = [
+    {"role": "system", "content": "You are a helpful assistant that converts natural‑language descriptions of simple arithmetic problems into JSON with fields 'operand1', 'operand2', and 'operator'."},
+    {"role": "user", "content": "What is the sum of 7 and 12?"},
+    {"role": "assistant", "content": "{\"operand1\": 7, \"operand2\": 12, \"operator\": \"+\"}"},
+    {"role": "user", "content": "Multiply 5 by 9."},
+    {"role": "assistant", "content": "{\"operand1\": 5, \"operand2\": 9, \"operator\": \"*\"}"},
+    # New query we want the model to answer in the same format
+    {"role": "user", "content": "Subtract 20 from 45."}
+]
 
-# Convert to PyTorch tensors and create DataLoaders
-train_dataset = TensorDataset(torch.tensor(X_train), torch.tensor(y_train))
-test_dataset = TensorDataset(torch.tensor(X_test), torch.tensor(y_test))
-train_loader = DataLoader(train_dataset, batch_size=16, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=16, shuffle=False)
+response = openai.ChatCompletion.create(
+    model="gpt-4o-mini",          # choose an appropriate model
+    messages=messages,
+    temperature=0.2,              # low temperature for deterministic output
+    max_tokens=100
+)
 
-# Define a simple feedforward network
-class SimpleMLP(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
-        super(SimpleMLP, self).__init__()
-        self.fc1 = nn.Linear(input_dim, hidden_dim)   # First linear layer
-        self.relu = nn.ReLU()                         # Non‑linear activation
-        self.fc2 = nn.Linear(hidden_dim, output_dim) # Output layer
-
-    def forward(self, x):
-        out = self.fc1(x)
-        out = self.relu(out)
-        out = self.fc2(out)
-        return out
-
-model = SimpleMLP(input_dim=4, hidden_dim=16, output_dim=3)
-
-# Loss function and optimizer
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.01)
-
-# Training loop
-num_epochs = 50
-for epoch in range(num_epochs):
-    model.train()
-    for batch_X, batch_y in train_loader:
-        optimizer.zero_grad()               # Clear gradients
-        outputs = model(batch_X)            # Forward pass
-        loss = criterion(outputs, batch_y)  # Compute loss
-        loss.backward()                     # Backward pass
-        optimizer.step()                    # Update weights
-    # Optional: print loss every 10 epochs
-    if (epoch+1) % 10 == 0:
-        print(f'Epoch [{epoch+1}/{num_epochs}], Loss: {loss.item():.4f}')
-
-# Evaluation on test set
-model.eval()
-correct = 0
-total = 0
-with torch.no_grad():
-    for batch_X, batch_y in test_loader:
-        outputs = model(batch_X)
-        _, predicted = torch.max(outputs, 1)
-        total += batch_y.size(0)
-        correct += (predicted == batch_y).sum().item()
-accuracy = 100 * correct / total
-print(f'Test Accuracy: {accuracy:.2f}%')
+# Print the model's JSON answer
+print(response["choices"][0]["message"]["content"])
 */
 
